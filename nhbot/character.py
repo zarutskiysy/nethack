@@ -520,8 +520,14 @@ class Character:
             letter, skill_type, skill_level = matches[0]
             if letter:
                 letter = letter[0]
-                assert letter not in self.upgradable_skills.values()
-                self.upgradable_skills[self.name_to_skill_type[skill_type]] = letter
+                # ENHANCE_PAGES (DT6A c9a42ac): tty menus restart their item letters at 'a' on every page
+                # (wintty.c tty_end_menu: 'if ((n % lmax) == 0) menu_ch = 'a''), so a two-page #enhance list
+                # with an advanceable skill on each page shows 'a -' twice (DT6A's Tourist: dagger on page 1,
+                # dart on page 2). The old assert then raised in fight2's parse_enhance_view on every call: no
+                # fighting at all until death (3,200 panics, an XL-6 Tourist killed by a gecko). Keep the first
+                # page's skill; once it is advanced the list is re-read and the other one gets its own letter.
+                if letter not in self.upgradable_skills.values():
+                    self.upgradable_skills[self.name_to_skill_type[skill_type]] = letter
             self.skill_levels[self.name_to_skill_type[skill_type]] = self.name_to_skill_level[skill_level]
 
     def _get_str_dex_to_hit_bonus(self):

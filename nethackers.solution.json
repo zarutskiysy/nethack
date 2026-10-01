@@ -8,7 +8,10 @@
   ],
   "influences": [
     "github.com/CleverShovel/nethacker@0d1fb22498024cdcac06be9d15d0f70e8cae803c",
+    "github.com/CleverShovel/nethacker@29ab0a7a56c47bcdc90548d726aa305ff3491023",
+    "github.com/CleverShovel/nethacker@9dc0822a3c90a39dad16684bd2014f611d0bebee",
     "github.com/DT6A/nethacker@59ce30c509ef568366fe846afeba03dede939339",
+    "github.com/DT6A/nethacker@c9a42ac64f24f3cb2cc16fe6254803bb023252c3",
     "github.com/DT6A/nethacker@d956abff7baa169d549a8d12fa1d219412833b67",
     "github.com/Komershan/nethacker@5520db0a6f9ffbcd64c19443bf71746d7c403b69",
     "github.com/Komershan/nethacker@ddfd58642853498954a79134e525b98a5e248fbb",

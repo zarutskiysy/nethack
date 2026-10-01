@@ -1419,6 +1419,26 @@ DITCH_RETRY = True
 # measured on this engine, so those keep e29eb82's Dlvl-1 grind too: only the Wizard leaves the list.
 ROLE_GRIND_LEVELS = {'Rogue': {}, 'Knight': {}, 'Tourist': {}, 'Priest': {}}
 
+# RING_MODULE (item/ring_amulet_logic.py, item/scroll_identify.py; tuning in item/ring_amulet_config.py): the ring/amulet
+# module of CleverShovel/nethacker@9dc0822 with the fixes of 29ab0a7 (identify-menu paging, harm-gated reading). It wears
+# identified rings/amulets that always help (slow digestion, free action, poison resistance, gain Str/Con; life saving,
+# versus poison), the combat-only ones (protection, increase accuracy/damage, reflection) only while a hostile is within
+# 6 squares, sheds them when Hungry, and reads unknown scrolls at a safe moment to identify carried rings/amulets.
+# Evidence (verified tier, private seeds, the same 15 games per identity): 9dc0822 = e29eb82 + this module beat e29eb82 on
+# every Wizard identity both are listed for (wiz-gno-neu 0.334 vs 0.303/0.281, wiz-hum-neu 0.298 vs 0.257, wiz-hum-cha
+# 0.243 vs 0.210 and 0.326 vs <=0.223) -- a Wizard starts with two identified rings -- and lost ~0.01 per identity
+# elsewhere (0.2836 vs 0.2864 overall); CleverShovel's own public-seed panels: negative on most non-Wizard identities.
+# Measured on e29eb82's Wizard (Dlvl-1 grind, no force bolt), not on this engine's: A/B it here.
+RING_MODULE = False                 # master switch (A/B pending: on for Wizards only)
+RING_WEAR_ROLES = ('Wizard',)       # role names for the wearing strategies below (None: every role)
+RING_WEAR_IDENTIFIED = True         # the always-wear list (ring_amulet_config.ALWAYS_WEAR_*)
+RING_COMBAT_ONLY_WEAR = True        # protection / increase accuracy / increase damage / reflection near hostiles only
+RING_NUTRITION_REMOVE = True        # take the module's rings/amulets off when Hungry (never slow digestion), on when fed
+RING_STARTING_WEAR = False          # every starting ring, kept on (CleverShovel: -0.024 on four wizard leaders)
+RING_AMULET_TRIAL = False           # try unidentified amulets on (CleverShovel: never better on five leaders)
+RING_SCROLL_IDENTIFY = True         # read unknown scrolls at a safe moment to identify carried rings/amulets
+RING_SCROLL_ROLES = ('Wizard',)     # role names for the scroll reading (None: every role)
+
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():

@@ -15,3 +15,8 @@
   channel toward land that has one (trap.c drown(): the hero crawls out at once to a random free land square).
 - `MINES_TOOL_TRIP` (on; +0.018 +- 0.007 per game over 272 paired held-out games): a tool-less planned dive takes the Mines route for any race (it was for
   dwarves and gnomes only), so humans, elves and orcs go and take a dwarf's pick-axe.
+- DT6A's two-page `#enhance` fix (DT6A/nethacker@c9a42ac): tty menus restart item letters on each page; the parser's
+  assert then fired on every fight start.
+- CleverShovel's ring/amulet/scroll module (CleverShovel/nethacker@9dc0822 V1, @29ab0a7 V2), Wizards only, behind
+  `RING_MODULE` (A/B pending): wears identified useful rings (slow digestion, free action, poison resistance...),
+  combat-only rings in fights, sheds rings when Hungry, reads scrolls at safe moments to identify rings/amulets.
