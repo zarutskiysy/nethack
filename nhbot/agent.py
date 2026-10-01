@@ -2736,6 +2736,25 @@ class Agent:
         self.inventory.arrange_items().run()
         self.inventory.unreachable_items_until[self.inventory._here()] = self.blstats.time + 5000
 
+    def _keep_digging_tool_wielded(self):
+        """DIG_TOOL_MELEE: diving with the digging tool in hand, a fight swapped to the 'best' melee weapon first (a whole
+        move: the attacker's free round) and the next dig swapped back. get_best_melee_weapon never rates a pick-axe
+        (a weapon-tool), so an Archeologist took up its +2 bullwhip (d2+2) over the pick (d6) in 42% of its dive deaths'
+        last turns. Keep the tool unless the best weapon is clearly better."""
+        if not jf_config.DIG_TOOL_MELEE or not self.global_logic.dive.diving:
+            return False
+        main = self.inventory.items.main_hand
+        if main is None or not (main.is_unambiguous() and main.object.name in ('pick-axe', 'dwarvish mattock')):
+            return False
+        try:
+            best, best_dps = self.inventory.get_best_melee_weapon(return_dps=True)
+            if best is None or best is main:
+                return True
+            tool_dps = utils.calc_dps(*self.character.get_melee_bonus(main, large_monster=False))
+            return best_dps < jf_config.DIG_TOOL_MELEE_MARGIN * tool_dps
+        except Exception:
+            return False
+
     def _touch_petrifies(self, action):
         # hitting a cockatrice bare-handed (Monk martial arts) or kicking it
         # barefoot turns you to stone on the spot
@@ -2762,7 +2781,7 @@ class Agent:
             _, dy, dx = best_action
             target_y = self.blstats.y + dy
             target_x = self.blstats.x + dx
-            if self.wield_best_melee_weapon():
+            if not self._keep_digging_tool_wielded() and self.wield_best_melee_weapon():
                 return wait_counter
             with self.env.debug_tiles([[self.blstats.y, self.blstats.x],
                                        [target_y, target_x]], color=(255, 0, 255), is_path=True):
@@ -3627,6 +3646,11 @@ class Agent:
             return
         self._panic_repeats = 0
         m = re.search(r'expected \((\d+), (\d+)\)', str(exc))
+        if m is None and jf_config.PANIC_TILE_FIX:
+            # PANIC_TILE_FIX: 'Monster on a next tile when moving: (13,30)' has no 'expected' and no space after the
+            # comma, so the loop breaker only ever random-walked and replanned the same blocked step (92% of these
+            # panics come from inventory.check_items; one grind sat 38k turns behind a floating eye, mt1 mon s102)
+            m = re.search(r'moving: \((\d+),\s*(\d+)\)', str(exc))
         if m is not None:
             y, x = int(m.group(1)), int(m.group(2))
             try:

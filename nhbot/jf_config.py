@@ -1411,6 +1411,12 @@ ELBERETH_FUTILE = True
 FORCE_BOLT = True
 # SPORE_TRAP_FIX (fight_heur.melee_monster_priority): the trapped-by-a-gas-spore melee only when its blast can't kill us
 SPORE_TRAP_FIX = True
+# PANIC_TILE_FIX (agent._note_repeated_panic): the loop breaker also forbids a square a monster keeps blocking
+PANIC_TILE_FIX = True
+# DIG_TOOL_MELEE (agent._keep_digging_tool_wielded): diving, fight with the wielded pick-axe/mattock unless the best weapon
+# beats it by this factor in expected damage per turn
+DIG_TOOL_MELEE = True
+DIG_TOOL_MELEE_MARGIN = 1.3
 # DITCH_RETRY (dive_logic._ditch_pet_check): a pet ditch that ran out of time is retried (DITCH_PET_TRIES)
 DITCH_RETRY = True
 # the grind's level table per role name (global_logic._grind_level; {}: Dlvl 1 throughout), overriding GRIND_LEVELS.

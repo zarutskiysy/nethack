@@ -21,3 +21,7 @@
   `RING_MODULE` (A/B pending): wears identified useful rings (slow digestion, free action, poison resistance...),
   combat-only rings in fights, sheds rings when Hungry, reads scrolls at safe moments to identify rings/amulets.
 - Archeologists dig-dive from XL 5 instead of 3 (`ARC_DIG_DIVE_XL`): +0.024 +- 0.013 over 236 paired held-out games.
+- Small fixes found by log analysis: the panic-loop breaker now also forbids a square a monster keeps blocking
+  (`PANIC_TILE_FIX`; one grind sat 38k turns), divers keep fighting with the wielded pick-axe/mattock unless the best
+  weapon is clearly better (`DIG_TOOL_MELEE`), a timed-out pet ditch is retried (`DITCH_RETRY`), a trapping gas spore is
+  only hit when its blast can't kill (`SPORE_TRAP_FIX`).

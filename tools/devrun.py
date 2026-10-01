@@ -50,9 +50,9 @@ def play(args):
             last = obs
             steps += 1
             if obs["blstats"][10] > 0 and obs["blstats"][20] > 0:
-                live_bl = obs["blstats"]
+                live_bl = obs["blstats"].copy()
                 if steps % 50 == 0 or obs["blstats"][10] < obs["blstats"][11] // 3:
-                    live_screen = obs["tty_chars"]
+                    live_screen = obs["tty_chars"].copy()
             m = bytes(obs["message"]).split(b"\0")[0].decode("latin-1").strip()
             if m and (not msgs or msgs[-1][1] != m):
                 msgs.append((int(obs["blstats"][20]), m))
