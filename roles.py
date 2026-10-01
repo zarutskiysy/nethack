@@ -3,7 +3,8 @@
 Overrides are module attributes of the nhbot engine, written as "module.NAME" (e.g. "dive_logic.DIVE_XL",
 "jf_config.FORCE_BOLT"). Each episode runs in a fresh bot process, so setting them at reset() is safe.
 Dev runs may add or replace overrides with JF_ROLE_CFG='{"wiz": {"dive_logic.EARLY_DIVE_XL": 4}}'; keys are
-identity prefixes ("wiz", "wiz-elf", "wiz-elf-cha-mal"), applied from the least to the most specific.
+identity prefixes ("wiz", "wiz-elf", "wiz-elf-cha-mal"), applied from the least to the most specific;
+"*" applies to every identity.
 """
 from __future__ import annotations
 
@@ -63,10 +64,10 @@ def overrides_for(ident: str | None) -> dict[str, object]:
     if raw:
         for k, v in json.loads(raw).items():
             table.setdefault(k, {}).update(v)
-    out: dict[str, object] = {}
+    out: dict[str, object] = dict(table.get("*", {}))   # "*": every identity, before any prefix
     if not ident:
         return out
-    for prefix in sorted(table, key=len):
+    for prefix in sorted((k for k in table if k != "*"), key=len):
         if ident == prefix or ident.startswith(prefix + "-"):
             out.update(table[prefix])
     return out
