@@ -67,7 +67,8 @@ MINES_ROUTE = True
 # 0.06 progress against 0.34 with a tool. In the Mines the camp (MINES_CAMP) hunts levels 1-4 for a dwarf (3 in 8
 # carry a pick-axe or a mattock, makemon.c m_initweap); with a tool the dive climbs back and digs the main dungeon,
 # without one it goes on down to Mines' End. Rescue dives keep the main stairs (see should_dive).
-MINES_TOOL_TRIP = False
+# ON: A/B mt0/mt1 (23 human/elf/orc identity types x 12 held-out seeds): +0.0178 +- 0.0065 per game, 30 wins / 16 losses.
+MINES_TOOL_TRIP = True
 MINES_BRANCH_MAX_DEPTH = 4     # the Mines branch staircase is on Dlvl 2-4
 MINES_MIN_LEVELS = 8           # dungeon.def: the Mines have 8-9 levels, Mines' End is the last
 # XP gate inside the Mines: before going to Mines level k, explore the current level fully while

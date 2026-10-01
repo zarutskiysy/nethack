@@ -13,5 +13,5 @@
 - `roles.py`: per-identity overrides of engine settings (only for nhbot identities).
 - `MEDUSA_HOP` (off pending A/B): on Medusa's level with no dry square on our islet, step into a one-square moat
   channel toward land that has one (trap.c drown(): the hero crawls out at once to a random free land square).
-- `MINES_TOOL_TRIP` (off pending A/B): a tool-less planned dive takes the Mines route for any race (it was for
+- `MINES_TOOL_TRIP` (on; +0.018 +- 0.007 per game over 272 paired held-out games): a tool-less planned dive takes the Mines route for any race (it was for
   dwarves and gnomes only), so humans, elves and orcs go and take a dwarf's pick-axe.
