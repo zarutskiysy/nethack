@@ -3622,6 +3622,7 @@ class DiveLogic:
         if jf_config.AT_THREAT_AVOID:
             holding, act = self._at_hold()
             if holding:
+                self._at_count(level.key())   # (once per turn: this also runs as other strategies' condition)
                 return act   # a zap down, or None: fight2 fights the @ on level ground and try_dig_down waits
         pit_ok = not self._in_own_pit() or (WAND_RESERVE and self._reserve_emergency())
         if WAND_FIRST and wand is not None and pit_ok and not self._wand_waits() and not self._wand_reserved():
