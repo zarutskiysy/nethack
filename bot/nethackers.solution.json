@@ -1,0 +1,12 @@
+{
+  "schema": "nethackers.solution/v1",
+  "name": "zarutskiysy-nhbot",
+  "root": "nhbot",
+  "parents": [
+    "github.com/daglar-dragomirov/nethacker@d8da1f72c197a54ac66d69466eee32f7bc4e72d9"
+  ],
+  "influences": [
+    "github.com/vkurenkov/nethacker@238c254960fae35dbb3c8de7922da7f705875c41"
+  ],
+  "entrypoint": "bot.py"
+}

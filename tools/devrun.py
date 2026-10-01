@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""Native dev runner: play a bot on held-out seeds and keep death diagnostics.
+
+usage: dev/.venv/bin/python tools/devrun.py BOT_DIR OUT_TAG --ids val-dwa-law-fem,wiz-hum-neu-mal
+           [--seeds 0-9] [--eval-id dev1] [-j 8]
+Writes devruns/OUT_TAG/<ident>__<seed>.json with progress, depth, cause, last messages and
+the final screen. Seeds come from nethackers' HMAC derivation with secret 'dev' and the given
+evaluation id, so they never overlap the published batches.
+"""
+import argparse
+import json
+import multiprocessing as mp
+import os
+import sys
+import time
+import traceback
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def play(args):
+    bot_dir, ident, seed, eval_id, out_path, max_steps, secret = args
+    os.environ["JF_LOG_DIR"] = str(Path(out_path).parent / "logs")
+    os.environ["JF_EPISODE"] = f"{ident}__{seed}"
+    import random
+    import warnings
+    warnings.filterwarnings("ignore")
+    from nethackers.arena.environment import make_environment
+    from nethackers.arena.seeds import trajectory_spec
+    spec = trajectory_spec(secret, eval_id, seed)
+    sys.path.insert(0, bot_dir)
+    os.chdir(bot_dir)
+    random.seed(spec.bot_seed)
+    import numpy as np
+    np.random.seed(spec.bot_seed % (1 << 32))
+    import bot
+    env = make_environment(max_steps, 10_000, ident)
+    agent = bot.make_agent()
+    t0 = time.time()
+    obs = env.reset(spec)
+    agent.reset(obs)
+    msgs, steps, error, last = [], 0, None, obs
+    try:
+        while True:
+            action = agent.act(obs)
+            obs, _r, term, trunc = env.step(action)
+            last = obs
+            steps += 1
+            m = bytes(obs["message"]).split(b"\0")[0].decode("latin-1").strip()
+            if m and (not msgs or msgs[-1][1] != m):
+                msgs.append((int(obs["blstats"][20]), m))
+                msgs = msgs[-60:]
+            if term or trunc:
+                break
+    except Exception:
+        error = traceback.format_exc()[-3000:]
+    m = env.metrics()
+    screen = bytes(last["tty_chars"]).decode("latin-1")
+    screen = "\n".join(screen[i:i + 80].rstrip() for i in range(0, len(screen), 80))
+    rec = dict(ident=ident, seed=seed, progress=m.progress, milestone=m.milestone, depth=m.max_depth,
+               turns=m.turns, steps=steps, cause=m.cause_of_death, end_status=m.end_status,
+               wall=time.time() - t0, error=error, messages=msgs, screen=screen,
+               blstats=[int(x) for x in last["blstats"]])
+    Path(out_path).write_text(json.dumps(rec))
+    try:
+        agent.close()
+    except Exception:
+        pass
+    env.close()
+    return f"{ident} s{seed}: {m.progress:.3f} D{m.max_depth} T{m.turns} {m.cause_of_death} ({time.time() - t0:.0f}s)"
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("bot")
+    p.add_argument("tag")
+    p.add_argument("--ids", required=True)
+    p.add_argument("--seeds", default="0-9")
+    p.add_argument("--eval-id", default="dev1")
+    p.add_argument("--secret", default="dev", help="'public' with --eval-id local replays the published batches")
+    p.add_argument("-j", type=int, default=8)
+    p.add_argument("--max-steps", type=int, default=1_000_000)
+    a = p.parse_args()
+    lo, _, hi = a.seeds.partition("-")
+    seeds = range(int(lo), int(hi or lo) + 1)
+    ids = a.ids.split(",")
+    if ids == ["all"]:
+        ids = [o["name"] for o in json.loads((ROOT / "evals" / "objectives.json").read_text())
+               if o["kind"] == "identity"]
+    out = ROOT / "devruns" / a.tag
+    out.mkdir(parents=True, exist_ok=True)
+    # play a frozen copy: edits to the bot while the run goes on must not leak into it
+    snap = out / "bot_snapshot"
+    if not snap.exists():
+        import shutil
+        shutil.copytree(Path(a.bot).resolve(), snap, ignore=shutil.ignore_patterns("__pycache__"))
+    (out / "jf_cfg.txt").write_text(os.environ.get("JF_CFG", ""))
+    bot_dir = str(snap)
+    jobs = [(bot_dir, i, s, a.eval_id, str(out / f"{i}__{s}.json"), a.max_steps, a.secret)
+            for s in seeds for i in ids if not (out / f"{i}__{s}.json").exists()]
+    ctx = mp.get_context("spawn")
+    with ctx.Pool(a.j, maxtasksperchild=1) as pool:
+        for line in pool.imap_unordered(play, jobs):
+            print(line, flush=True)
+
+
+if __name__ == "__main__":
+    main()
