@@ -1462,9 +1462,9 @@ RING_SCROLL_ROLES = ('Wizard',)     # role names for the scroll reading (None: e
 # below keep their own plans); a dig already in our pit goes on.
 AT_THREAT_AVOID = False
 AT_THREAT_RADIUS = 8                # distance (BFS steps, else Chebyshev) of an @ that holds a new pit
-AT_THREAT_RADIUS_DWARF = 5          # a dwarf's whole hole takes ~8 turns
-AT_THREAT_NEAR = 5                  # an @ closer than this is next to us before any pit: the dig starts as usual
-AT_THREAT_NEAR_DWARF = 3            # (fight2 meets it there with the dig's effort kept, dig.c 'continue digging')
+AT_THREAT_RADIUS_DWARF = 7          # a dwarf's whole hole takes ~8 actions (apply, 2 digs to the pit, apply, 4 digs)
+AT_THREAT_NEAR = 4                  # an @ closer than this is next to us before any pit (~5 actions: apply + 4-5 digs;
+AT_THREAT_NEAR_DWARF = 3            # a dwarf's 3): the dig starts as usual and fight2 meets it with the effort kept
 AT_THREAT_MEMORY = 10               # turns an @ seen within the radius keeps holding once out of view
 AT_THREAT_STILL = 4                 # turns an @ in view may stay no closer before we dig all the same
 AT_THREAT_MAX_HOLD = 40             # holding turns per level, at most
