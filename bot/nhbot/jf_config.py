@@ -1410,6 +1410,8 @@ ELBERETH_FUTILE = True
 # FORCE_BOLT (fight_heur.force_bolt_actions): Wizards cast force bolt in fights instead of only meleeing
 FORCE_BOLT = True
 FORCE_BOLT_MAX_FAIL = 0.3
+# farthest target (1: only instead of melee; ranged casts start fights the pet would have fought)
+FORCE_BOLT_MAX_DIST = 6
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

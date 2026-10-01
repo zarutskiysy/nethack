@@ -522,7 +522,8 @@ def force_bolt_actions(agent, monsters):
         _, y, x, mon, _ = monster
         dy, dx = y - y0, x - x0
         dist = max(abs(dy), abs(dx))
-        if dist == 0 or dist > FORCE_BOLT_RANGE or not (dy == 0 or dx == 0 or abs(dy) == abs(dx)):
+        if dist == 0 or dist > min(FORCE_BOLT_RANGE, jf_config.FORCE_BOLT_MAX_DIST) or \
+                not (dy == 0 or dx == 0 or abs(dy) == abs(dx)):
             continue
         if mon.mname in EXPLODING_MONSTERS and dist <= 1:
             continue

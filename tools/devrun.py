@@ -55,7 +55,7 @@ def play(args):
             m = bytes(obs["message"]).split(b"\0")[0].decode("latin-1").strip()
             if m and (not msgs or msgs[-1][1] != m):
                 msgs.append((int(obs["blstats"][20]), m))
-                msgs = msgs[-60:]
+                msgs = msgs[-int(os.environ.get("DEVRUN_KEEP", "60")):]
             if term or trunc:
                 break
     except Exception:
