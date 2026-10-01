@@ -41,12 +41,17 @@ def play(args):
     obs = env.reset(spec)
     agent.reset(obs)
     msgs, steps, error, last = [], 0, None, obs
+    live_bl, live_screen = None, None   # the last observation before the end screens (blstats zeroed there)
     try:
         while True:
             action = agent.act(obs)
             obs, _r, term, trunc = env.step(action)
             last = obs
             steps += 1
+            if obs["blstats"][10] > 0 and obs["blstats"][20] > 0:
+                live_bl = obs["blstats"]
+                if steps % 50 == 0 or obs["blstats"][10] < obs["blstats"][11] // 3:
+                    live_screen = obs["tty_chars"]
             m = bytes(obs["message"]).split(b"\0")[0].decode("latin-1").strip()
             if m and (not msgs or msgs[-1][1] != m):
                 msgs.append((int(obs["blstats"][20]), m))
@@ -61,7 +66,10 @@ def play(args):
     rec = dict(ident=ident, seed=seed, progress=m.progress, milestone=m.milestone, depth=m.max_depth,
                turns=m.turns, steps=steps, cause=m.cause_of_death, end_status=m.end_status,
                wall=time.time() - t0, error=error, messages=msgs, screen=screen,
-               blstats=[int(x) for x in last["blstats"]])
+               blstats=[int(x) for x in last["blstats"]],
+               live_bl=[int(x) for x in live_bl] if live_bl is not None else None,
+               live_screen=(lambda t: "\n".join(t[i:i + 80].rstrip() for i in range(0, len(t), 80)))(
+                   bytes(live_screen).decode("latin-1")) if live_screen is not None else None)
     Path(out_path).write_text(json.dumps(rec))
     try:
         agent.close()
@@ -95,7 +103,7 @@ def main():
     if not snap.exists():
         import shutil
         shutil.copytree(Path(a.bot).resolve(), snap, ignore=shutil.ignore_patterns("__pycache__"))
-    (out / "jf_cfg.txt").write_text(os.environ.get("JF_CFG", ""))
+    (out / "jf_cfg.txt").write_text(os.environ.get("JF_CFG", "") + "\n" + os.environ.get("JF_ROLE_CFG", ""))
     bot_dir = str(snap)
     jobs = [(bot_dir, i, s, a.eval_id, str(out / f"{i}__{s}.json"), a.max_steps, a.secret)
             for s in seeds for i in ids if not (out / f"{i}__{s}.json").exists()]

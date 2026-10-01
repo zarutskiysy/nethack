@@ -10,6 +10,7 @@ os.environ.setdefault("XDG_CACHE_HOME", str(_cache_root / "xdg"))
 os.environ.setdefault("NUMBA_CACHE_DIR", str(_cache_root / "numba"))
 
 import adapter  # noqa: E402
+import roles  # noqa: E402
 
 
 class Bot:
@@ -19,6 +20,10 @@ class Bot:
         self._driver = adapter.AutoAscendDriver()
 
     def reset(self, initial_observation):
+        try:
+            roles.apply(roles.identity(initial_observation))
+        except Exception:  # noqa: BLE001 -- a bad override must never cost the episode
+            pass
         self._driver.reset(initial_observation)
 
     def act(self, observation):
