@@ -20,3 +20,4 @@
 - CleverShovel's ring/amulet/scroll module (CleverShovel/nethacker@9dc0822 V1, @29ab0a7 V2), Wizards only, behind
   `RING_MODULE` (A/B pending): wears identified useful rings (slow digestion, free action, poison resistance...),
   combat-only rings in fights, sheds rings when Hungry, reads scrolls at safe moments to identify rings/amulets.
+- Archeologists dig-dive from XL 5 instead of 3 (`ARC_DIG_DIVE_XL`): +0.024 +- 0.013 over 236 paired held-out games.
