@@ -367,6 +367,16 @@ class GlobalLogic:
             else:
                 assert 0, 'sokomap not found'
 
+            def simulate_move(y, x, dy, dx):
+                # the real level diverged from the solver (a boulder got destroyed,
+                # displaced or buried), so the stored solution no longer applies
+                try:
+                    sokomap.move(y, x, dy, dx)
+                except AssertionError:
+                    self.agent.stats_logger.log_event('sokoban_dropped')
+                    self.milestone = Milestone(int(self.milestone) + 1)
+                    raise AgentPanic('sokomap desynced')
+
             possible_mimics = set()
             last_resort_move = None
             for (y, x), (dy, dx) in answer:
@@ -380,7 +390,7 @@ class GlobalLogic:
                         self.agent.glyphs[ty + dy, tx + dx] in G.BOULDER:
 
                     soko_dis1 = sokomap.bfs()
-                    sokomap.move(y, x, dy, dx)
+                    simulate_move(y, x, dy, dx)
                     soko_dis2 = sokomap.bfs()
 
                     # see points that will no longer be accessible
@@ -412,7 +422,7 @@ class GlobalLogic:
                         return
 
                 else:
-                    sokomap.move(y, x, dy, dx)
+                    simulate_move(y, x, dy, dx)
 
                 if (~soko_boulder_mask | mask).all():
                     if self.agent.bfs()[ty, tx] != -1 and \
@@ -755,6 +765,9 @@ class GlobalLogic:
         Dlvl-3 grind at XL 7 (cap 5) lost 4.9-7.8% of games per 1000 turns. Dwarves (difficulty 4) spawn from
         XL 5 there, and the pet kills them for their pick-axes as it does on Dlvl 1 from XL 7."""
         table = jf_config.GRIND_LEVELS
+        # eL1fe: with force bolt (our spell fix) the Dlvl-3 grind pays for Wizards (Dlvl 1 only: -12.6 on 48 paired
+        # games); Priests -1.9/-2.7 and Knights +2.8/-1.4 showed no gain; Rogues gained (+3.3, +4.1); Tourists
+        # play another engine in our router
         by_role = jf_config.ROLE_GRIND_LEVELS
         role = getattr(self.agent.character, 'role', None)
         for name, t in by_role.items():

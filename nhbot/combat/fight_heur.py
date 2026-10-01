@@ -154,6 +154,30 @@ def ranger_point_blank_priority(agent, monster, default):
         return default
 
 
+# hypothesis: a Valkyrie's kitten that steps out of sight into a dark corridor is still there: the dagger
+# thrown at a monster behind it kills the pet ("It yowls!  You kill it!  You hear the rumble of distant
+# thunder": -15 alignment, -5 Luck), every prayer of the Dlvl 1-3 grind then fails and she starves (judge
+# seed 0 died that way at T3395 on Dlvl 1; seed 13 hit an unseen pet twice: "It yelps!  The dagger hits it").
+# Only visible floor squares are known to be free of the pet. Every role that throws or fires (Rogue daggers,
+# Ranger arrows) faces the same risk, so it is not gated by role.
+UNSEEN_PET_TURNS = 20
+
+
+def unseen_pet_may_be_at(agent, y, x):
+    where = getattr(agent, '_last_pet_where', None)
+    if where is None or agent.glyphs[y, x] in G.VISIBLE_FLOOR or utils.any_in(agent.glyphs, G.PETS):
+        return False
+    key, turn, positions = where
+    elapsed = agent.blstats.time - turn
+    if key != (agent.blstats.dungeon_number, agent.blstats.level_number) or elapsed > UNSEEN_PET_TURNS:
+        return False
+    reach = 2 + int(1.5 * elapsed)   # a kitten is speed 18 against our 12
+    if any(max(abs(py - y), abs(px - x)) <= reach for py, px in positions):
+        agent.log(f'UNSEEN PET may be at {(int(y), int(x))}: last seen {positions} {elapsed} turns ago, no throw')
+        return True
+    return False
+
+
 def ranged_priority(agent, dy, dx, monsters):
     if missiles_risk_the_watch(agent):
         return None
@@ -184,6 +208,9 @@ def ranged_priority(agent, dy, dx, monsters):
             return None
 
         if agent.glyphs[y, x] in G.PETS or not agent.current_level().walkable[y, x]:
+            return None
+
+        if agent.glyphs[y, x] not in G.MONS and line_dis_from(agent, y, x) > 1 and unseen_pet_may_be_at(agent, y, x):
             return None
 
         if agent.glyphs[y, x] in G.MONS:
@@ -218,6 +245,8 @@ def ranged_priority(agent, dy, dx, monsters):
                     break
                 if agent.glyphs[by, bx] in G.PETS or \
                         (agent.glyphs[by, bx] in G.MONS and not any(m[1] == by and m[2] == bx for m in monsters)):
+                    return None
+                if agent.glyphs[by, bx] not in G.MONS and unseen_pet_may_be_at(agent, by, bx):
                     return None
             if dis == 1 and ranger_point_blank(agent, launcher, ammo):
                 ret = ranger_point_blank_priority(agent, monster[0], ret)
@@ -492,61 +521,84 @@ def get_available_actions(agent, monsters):
     return actions
 
 
-FORCE_BOLT_RANGE = 6  # spelleffects -> weffects -> bhit(rn1(8, 6)): 6 squares always reach
+FORCE_BOLT_RANGE = 6  # the bolt flies rn1(8, 6) squares, so 6 always reaches
+
+
+FORCE_BOLT_MAX_RANGE = 13  # rn1(8, 6)
+
+
+def _force_bolt_tail_safe(agent, level, shop, y0, x0, sy, sx):
+    """The bolt flies on past the monster it hits (bhit: range -= 3) and breaks fragile objects on its way:
+    one killed a gnome zombie in a shop doorway and shattered a potion behind it (100 zorkmids, then the
+    shopkeeper). Refuse a line that reaches a known shop, or two visible objects (shop stock we have not
+    entered yet) before a wall; a lone corpse is no reason to melee instead."""
+    objects = 0
+    for k in range(1, FORCE_BOLT_MAX_RANGE + 1):
+        y, x = y0 + sy * k, x0 + sx * k
+        if not (0 <= y < level.walkable.shape[0] and 0 <= x < level.walkable.shape[1]):
+            return True
+        if shop is not None and shop[y, x]:
+            return False
+        # a bolt that kills the target flies on into whatever stands behind it: a jackal's bolt hit the
+        # Wizard's own housecat, which turned on it and killed it
+        if k > 1 and (agent.glyphs[y, x] in G.PETS or agent.monster_tracker.peaceful_monster_mask[y, x]):
+            return False
+        if agent.glyphs[y, x] in G.OBJECTS:
+            objects += 1
+            if objects >= 2:
+                return False
+        if not level.walkable[y, x] and level.seen[y, x]:
+            return True
+    return True
 
 
 def force_bolt_actions(agent, monsters):
-    """FORCE_BOLT: a Wizard casts force bolt (2d6, to-hit far above a quarterstaff's) at the best hostile on a
-    straight line the bolt reaches before anything else. AutoAscend never cast it: Wizards meleed with the
-    quarterstaff and were the weakest role. The bolt only stops at the first monster (zap.c bhit), so the line up
-    to the target must hold no pet, no peaceful and no other monster."""
-    if not jf_config.FORCE_BOLT:
-        return []
+    """Cast force bolt (2d6, rarely misses) at the nearest hostile on a straight, clear line.
+
+    Wizards start knowing it and it hits about twice as hard as their quarterstaff, yet the fight
+    heuristic only ever meleed; rank the bolt just above meleeing the same monster.
+    Ported from CleverShovel/nethacker@0d1fb22.
+    """
     character = agent.character
-    if character.role != character.WIZARD or 'force bolt' not in character.known_spells:
+    if not jf_config.FORCE_BOLT or 'force bolt' not in getattr(character, 'known_spells', {}) or \
+            agent.blstats.energy < 5:
         return []
-    bl = agent.blstats
-    if bl.energy < 5 or bl.hunger_state >= Hunger.WEAK or character.prop.polymorph or \
-            character.prop.confusion or character.prop.stun:
+    if agent.blstats.hunger_state >= Hunger.WEAK or character.prop.polymorph:  # "too hungry to cast"
         return []
-    if character.spell_fail_chance.get('force bolt', 1) > jf_config.FORCE_BOLT_MAX_FAIL:
+    if agent.blstats.carrying_capacity >= 2:  # Stressed: "Your concentration falters"
         return []
-    if (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
+    if character.spell_fail_chance.get('force bolt', 1) > 0.3:
         return []
-    y0, x0 = bl.y, bl.x
-    walkable = agent.current_level().walkable
+    if agent.inventory.engraving_below_me.lower() == 'elbereth':
+        return []
+    y0, x0 = agent.blstats.y, agent.blstats.x
+    level = agent.current_level()
+    # the bolt breaks fragile objects on its way: a shop's camera cost 200 zorkmids, then the shopkeeper
+    if level.shop_interior[y0, x0] or utils.isin(agent.glyphs, G.SHOPKEEPER).any():
+        return []
+    walkable = level.walkable
     peaceful = agent.monster_tracker.peaceful_monster_mask
-    low_hp = bl.hitpoints < bl.max_hitpoints * 0.6
+    # ... and whatever lies under the monster it kills: a bolt from a shop's doorway shattered a potion
+    shop = utils.dilate(level.shop_interior, radius=1) if level.shop_interior.any() else None
     best = None
     for monster in monsters:
         _, y, x, mon, _ = monster
         dy, dx = y - y0, x - x0
         dist = max(abs(dy), abs(dx))
-        if dist == 0 or dist > min(FORCE_BOLT_RANGE, jf_config.FORCE_BOLT_MAX_DIST) or \
-                not (dy == 0 or dx == 0 or abs(dy) == abs(dx)):
+        if dist == 0 or dist > FORCE_BOLT_RANGE or not (dy == 0 or dx == 0 or abs(dy) == abs(dx)):
             continue
-        if mon.mname in EXPLODING_MONSTERS and dist <= 1:
-            continue
-        # a weak monster is not worth the energy unless we are hurt: keep it for what can kill us
-        if mon.mname in WEAK_MONSTERS and not low_hp and dist == 1:
-            continue
-        if mon.mname in ONLY_RANGED_SLOW_MONSTERS and mon.mname != 'floating eye' and not low_hp:
+        if mon.mname in EXPLODING_MONSTERS and dist == 1:
             continue
         sy, sx = int(np.sign(dy)), int(np.sign(dx))
         cy, cx, clear = y0, x0, True
         for _ in range(dist - 1):
             cy, cx = cy + sy, cx + sx
-            if not walkable[cy, cx] or agent.glyphs[cy, cx] in G.PETS or peaceful[cy, cx] or \
-                    agent.glyphs[cy, cx] in G.MONS:
+            if not walkable[cy, cx] or agent.glyphs[cy, cx] in G.PETS or peaceful[cy, cx]:
                 clear = False
                 break
-        if not clear:
+        if not clear or not _force_bolt_tail_safe(agent, level, shop, y0, x0, sy, sx):
             continue
-        if dist == 1:
-            priority = melee_monster_priority(agent, monsters, monster) + 2
-            priority += elbereth_attack_penalty(agent, monsters, monster)
-        else:
-            priority = 14
+        priority = melee_monster_priority(agent, monsters, monster) + 2 if dist == 1 else 14
         if best is None or priority > best[0]:
             best = (priority, ('force_bolt', sy, sx))
     return [best] if best is not None else []
@@ -623,7 +675,7 @@ def get_priorities(agent):
     priority -= priority[agent.blstats.y, agent.blstats.x]
 
     actions = get_available_actions(agent, monsters)
-    if not any(a[1][0] in ('melee', 'kick', 'ranged') for a in actions):
+    if not any(a[1][0] in ('melee', 'kick', 'ranged', 'force_bolt') for a in actions):
         actions.extend(goto_action(agent, priority, monsters))
     return priority, actions
 

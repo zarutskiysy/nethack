@@ -55,6 +55,7 @@ class Agent:
         self.last_observation = None
 
         self._last_pet_seen = 0
+        self._last_pet_where = None    # (level key, turn, [(y, x), ...]) where the pet was last on screen
         self._corpse_debug_pos = None
         self._faint_msg_turn = None    # FAINT_MEASURE_FIX: turn of the screen that first showed a faint
         self._paralysis_end_turn = -10 ** 9   # STARVE_UNMEASURED_GAP: turn of the last 'You can move again'
@@ -77,6 +78,7 @@ class Agent:
         self._no_kick_until = -1      # wounded legs: no kicking until this turn
         self._last_resort_stairs_turn = -10 ** 9
         self._last_resort_dig_turn = -1   # LAST_RESORT_DIG: at most one zap per turn
+        self._last_resort_tele_turn = None
         self._last_resort_zapped = set()  # LR_WAND_ONCE: glyphs of unknown wands the last resort already zapped
         self.prayer_failed = False
         self._monk_meat_meals = 0
@@ -1016,6 +1018,9 @@ class Agent:
 
         if utils.any_in(self.glyphs, G.PETS):
             self._last_pet_seen = self.blstats.time
+            pets = np.argwhere(utils.isin(self.glyphs, G.PETS))
+            self._last_pet_where = ((self.blstats.dungeon_number, self.blstats.level_number), self.blstats.time,
+                                    [(int(y), int(x)) for y, x in pets])
 
         level = self.current_level()
 
@@ -1029,7 +1034,8 @@ class Agent:
         level.seen[mask] = True
         level.walkable[mask & (level.objects == -1)] = True
 
-        mask = utils.isin(self.glyphs, G.WALL, G.DOOR_CLOSED, G.BARS)
+        # trees (Monk quest home, some special levels) block movement like bars
+        mask = utils.isin(self.glyphs, G.WALL, G.DOOR_CLOSED, G.BARS, G.TREE)
         level.seen[mask] = True
         level.objects[mask] = self.glyphs[mask]
         level.walkable[mask] = False
@@ -1891,6 +1897,14 @@ class Agent:
         with self.atom_operation():
             dy, dx = direction
             direction = self.calc_direction(self.blstats.y, self.blstats.x, self.blstats.y + dy, self.blstats.x + dx)
+            # the answer to "In what direction?" is a key: 'ne' is two keys and 'n' is vi-key south-east
+            direction = {
+                'n': A.CompassDirection.N, 's': A.CompassDirection.S,
+                'e': A.CompassDirection.E, 'w': A.CompassDirection.W,
+                'ne': A.CompassDirection.NE, 'se': A.CompassDirection.SE,
+                'nw': A.CompassDirection.NW, 'sw': A.CompassDirection.SW,
+                '.': A.MiscDirection.WAIT,
+            }[direction]
             success = [False]
 
             def type_letters():
@@ -1907,15 +1921,7 @@ class Agent:
                     yield ' '
                 if 'In what direction?' in self.message:
                     success[0] = True
-                    # FORCE_BOLT: the compass action, not the string ('s' is no direction key, 'n' is south-east:
-                    # every aimed cast was wasted, only the self-cast '.' heals worked)
-                    yield {
-                        'n': A.CompassDirection.N, 's': A.CompassDirection.S,
-                        'e': A.CompassDirection.E, 'w': A.CompassDirection.W,
-                        'ne': A.CompassDirection.NE, 'se': A.CompassDirection.SE,
-                        'nw': A.CompassDirection.NW, 'sw': A.CompassDirection.SW,
-                        '.': A.MiscDirection.WAIT,
-                    }[direction]
+                    yield direction
 
             self.step(A.Command.CAST, type_letters())
             if success[0]:
@@ -2550,15 +2556,15 @@ class Agent:
                 yielded = True
                 yield True
                 self.character.parse_enhance_view()
-                # FORCE_BOLT: the spell list (and its failure rates, which armour changes) at each fight's start
-                if jf_config.FORCE_BOLT and self.character.role == Character.WIZARD:
-                    self.character.parse_spellcast_view()
+                self.character.parse_spellcast_view()
 
             move_priority_heatmap, actions = combat.fight_heur.get_priorities(self)
             actions.extend(combat.fight_heur.get_move_actions(self, dis, move_priority_heatmap))
 
             if self.character.prop.polymorph:
                 actions = list(filter(lambda x: x[1][0] != 'ranged', actions))
+
+            actions = [a for a in actions if not self._touch_petrifies(a[1])]
 
             if jf_config.PIT_AWARE_FIGHT and self.global_logic.dive.diving and self.in_pit() and \
                     any(utils.adjacent((self.blstats.y, self.blstats.x), (m[1], m[2])) for m in monsters):
@@ -2651,7 +2657,7 @@ class Agent:
                     a[1][0] in ('melee', 'kick') and self._spore_unsafe_at(self.blstats.y + a[1][1],
                                                                           self.blstats.x + a[1][2]))]
             if allow_attack_all:
-                attack_actions = [a for a in actions if a[1][0] in ('melee', 'kick', 'ranged', 'zap')]
+                attack_actions = [a for a in actions if a[1][0] in ('melee', 'kick', 'ranged', 'zap', 'force_bolt')]
                 if attack_actions:
                     actions = attack_actions
 
@@ -2729,6 +2735,19 @@ class Agent:
         self._squeeze_cap_until = self.blstats.time + 300
         self.inventory.arrange_items().run()
         self.inventory.unreachable_items_until[self.inventory._here()] = self.blstats.time + 5000
+
+    def _touch_petrifies(self, action):
+        # hitting a cockatrice bare-handed (Monk martial arts) or kicking it
+        # barefoot turns you to stone on the spot
+        if action[0] not in ('melee', 'kick'):
+            return False
+        _, dy, dx = action
+        glyph = self.glyphs[self.blstats.y + dy, self.blstats.x + dx]
+        if glyph not in G.MONS or MON.permonst(glyph).mname not in ('cockatrice', 'chickatrice'):
+            return False
+        if action[0] == 'kick':
+            return self.inventory.items.boots is None
+        return self.inventory.items.gloves is None and self.inventory.items.main_hand is None
 
     def _fight2_perform_action(self, best_action, wait_counter):
         if best_action[0] == 'move':
@@ -3059,8 +3078,9 @@ class Agent:
             yield False
 
     def should_cast_heal(self):
-        # TODO: consider casting for other classes
-        if self.character.role != self.character.HEALER:
+        # any role that knows healing (a Monk's starting book is healing one time in three)
+        # spell.c: Stressed or worse, "Your concentration falters while carrying so much stuff" (a lost turn)
+        if self.blstats.carrying_capacity >= 2:
             return False
         if 'healing' not in self.character.known_spells:
             return False
@@ -3075,6 +3095,9 @@ class Agent:
         return self.blstats.energy >= 5 and low_hp
 
     def should_cast_extra_heal(self):
+        # spell.c: Stressed or worse, "Your concentration falters while carrying so much stuff" (a lost turn)
+        if self.blstats.carrying_capacity >= 2:
+            return False
         if 'extra healing' not in self.character.known_spells:
             return False
         if self.blstats.hunger_state >= Hunger.FAINTING:
@@ -3090,16 +3113,31 @@ class Agent:
     @utils.debug_log('emergency_strategy')
     @Strategy.wrap
     def emergency_strategy(self):
+        # a cockatrice's touch or hiss starts delayed stoning: a few turns to eat a lizard
+        # or acidic corpse, and prayer fixes it as major trouble even outside the safe window
+        if self.character.prop.stoned:
+            for item in flatten_items(self.inventory.items):
+                if item.is_corpse() and item.monster_id in \
+                        [MON.from_name(n) - nh.GLYPH_MON_OFF for n in ['lizard', 'acid blob']]:
+                    yield True
+                    self.inventory.eat(item, smart=False)
+                    return
+            if self.last_prayer_turn is None or self.blstats.time - self.last_prayer_turn > 5:
+                yield True
+                self.pray()
+                return
 
-        # if self.should_cast_extra_heal():
-        #     yield True
-        #     self.cast('extra healing', direction=(0, 0))
-        #     return
 
-        # if self.should_cast_heal():
-        #     yield True
-        #     self.cast('healing', direction=(0, 0))
-        #     return
+        # a Healer starts with healing and extra healing: cast them before potions and prayer
+        if self.should_cast_extra_heal():
+            yield True
+            self.cast('extra healing', direction=(0, 0))
+            return
+
+        if self.should_cast_heal():
+            yield True
+            self.cast('healing', direction=(0, 0))
+            return
 
         # hypothesis (astra guard.py stop list): stoning, sliming, strangling and food poisoning /
         # terminal illness kill within a few turns; prayer fixes all of them, so a riskier-than-usual
@@ -3268,6 +3306,22 @@ class Agent:
                     self._last_resort_stairs_turn = self.blstats.time
                     self.move('<')
                     return
+                # a known scroll of teleportation is the cleanest way out of melee (read.c: a random spot on the
+                # level; cursed or confused, a random level): the unknown-scroll gamble below read every unknown
+                # scroll, yet 12 of 48 dead elven Wizards still carried an identified one
+                if level.dungeon_number != Level.SOKOBAN and not self.character.prop.blind and \
+                        self._last_resort_tele_turn != self.blstats.time:
+                    scroll = next((i for i in self.inventory.items if i.category == nh.SCROLL_CLASS and
+                                   i.is_unambiguous() and i.object.name == 'teleportation' and
+                                   i.shop_status == Item.NOT_SHOP), None)
+                    if scroll is not None:
+                        yield True
+                        self._last_resort_tele_turn = self.blstats.time
+                        self.log(f'LAST RESORT: reading {scroll.text!r}')
+                        with self.atom_operation():
+                            self.step(A.Command.READ)
+                            self.type_text(self.inventory.items.get_letter(scroll))
+                        return
                 # DESPERATE_PRAYER_GAP: a prayer that may come too soon beats dying. pray.c fixes critically low HP
                 # while the timeout is <= 200; after a successful prayer it is rnz(350), which leaves ~62% of
                 # prayers working 250 turns later and ~77% after 400 (the usual rule waits 500: ~87%). A failure
@@ -3660,7 +3714,7 @@ class Agent:
                         for field in ('role', 'race', 'alignment', 'gender', 'self_glyph'):
                             setattr(self.character, field, getattr(prev, field))
                     self.character.parse_enhance_view()
-                    # self.character.parse_spellcast_view()
+                    self.character.parse_spellcast_view()
                     self.step(A.Command.AUTOPICKUP)
                     if 'Autopickup: ON' in self.message:
                         self.step(A.Command.AUTOPICKUP)

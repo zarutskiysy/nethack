@@ -86,6 +86,10 @@ class Property:
         return self._condition(nh.BL_MASK_BLIND)
 
     @property
+    def stoned(self):
+        return self._condition(nh.BL_MASK_STONE)
+
+    @property
     def polymorph(self):
         if not nh.glyph_is_monster(self.agent.glyphs[self.agent.blstats.y, self.agent.blstats.x]):
             return False
@@ -291,10 +295,6 @@ class Character:
         # intrinsic telepathy from a floating eye corpse (eat.c cpostfx), lost to sit.c attrcurse: read by
         # jf_config.FEYE_TELE (an extrinsic source -- helm of telepathy, amulet of ESP -- prints nothing and is not seen)
         self.telepathic = False
-        # parse_spellcast_view fills these (FORCE_BOLT: Wizards from their first fight on)
-        self.known_spells = dict()
-        self.spell_fail_chance = dict()
-        self._spells_parsed_turn = None
 
     def _track_telepathy(self, msg):
         # eat.c cpostfx TELEPAT: 'You feel a strange mental acuity.' ('in touch with the cosmos.' hallucinating);
@@ -451,8 +451,8 @@ class Character:
         self.known_spells = dict()
         self.spell_fail_chance = dict()
 
-        # TODO: parse for other spellcaster classes
-        if self.role not in (self.HEALER, self.WIZARD):
+        # Healers heal themselves, Wizards cast force bolt (see fight_heur.force_bolt_actions)
+        if self.role not in (self.HEALER, self.WIZARD, self.MONK, self.PRIEST):
             return
 
         with self.agent.atom_operation():

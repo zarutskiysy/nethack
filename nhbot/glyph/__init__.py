@@ -74,6 +74,7 @@ class G:  # Glyphs
     DOORS = frozenset.union(DOOR_CLOSED, DOOR_OPENED)
 
     BARS = frozenset({SS.S_bars})
+    TREE = frozenset({SS.S_tree})
 
     MONS = frozenset(MON.ALL_MONS)
     PETS = frozenset(MON.ALL_PETS)

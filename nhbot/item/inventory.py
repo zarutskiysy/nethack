@@ -999,6 +999,16 @@ class Inventory:
             if self.agent.character.role == Character.MONK and slot == O.ARM_SUIT:
                 continue
 
+            # spell.c percent_success: metallic body armor adds urole.spelarmr (10), metallic gloves 6, and a shield
+            # heavier than a small one quarters the chance. A found chain mail took a Healer's healing from 0% to
+            # 67% failure and it died on Dlvl 3-4 with full Pw; mithril took an orcish Wizard's force bolt to 79%.
+            # Healers and Wizards skip those pieces (a metal helm or boots still leave the spells castable).
+            # (found by our `nethackers evolve` run night1-r2)
+            if self.agent.character.role in (Character.HEALER, Character.WIZARD) and (
+                    (slot in (O.ARM_SUIT, O.ARM_GLOVES) and O.IRON <= item.object.metal <= O.MITHRIL) or
+                    (slot == O.ARM_SHIELD and item.object.wt > 30 and item.object.name != 'shield of reflection')):
+                continue
+
             # (ARMOR_UP: a tie keeps what we wear -- no swap for nothing)
             if best_ac[slot] is None or best_ac[slot] > ac or (armor_up and best_ac[slot] == ac and item.equipped):
                 best_ac[slot] = ac

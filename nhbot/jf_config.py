@@ -1407,13 +1407,11 @@ SHOP_DIG_AFTER = 300
 # also blocked it while stunned (1 in 4 per letter, ~7% whole): 30 stunned blocks in da-all2's 270 games, no gain.
 ELBERETH_FUTILE = True
 
-# FORCE_BOLT (fight_heur.force_bolt_actions): Wizards cast force bolt in fights instead of only meleeing
-FORCE_BOLT = False
-FORCE_BOLT_MAX_FAIL = 0.3
-# farthest target (1: only instead of melee; ranged casts start fights the pet would have fought)
-FORCE_BOLT_MAX_DIST = 6
-# the grind's level table per role name (global_logic._grind_level; {}: Dlvl 1 throughout), overriding GRIND_LEVELS
-ROLE_GRIND_LEVELS = {'Wizard': {}, 'Knight': {}, 'Tourist': {}, 'Priest': {}}
+# FORCE_BOLT (fight_heur.force_bolt_actions, eL1fe's port of CleverShovel 0d1fb22): cast force bolt in fights
+FORCE_BOLT = True
+# the grind's level table per role name (global_logic._grind_level; {}: Dlvl 1 throughout), overriding GRIND_LEVELS.
+# eL1fe (cfc38282): with working force bolt the Dlvl-3 grind pays for Wizards; Rogues keep Dlvl 1 (+3.3/+4.1)
+ROLE_GRIND_LEVELS = {'Rogue': {}}
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

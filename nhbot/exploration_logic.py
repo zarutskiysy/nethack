@@ -291,7 +291,10 @@ class ExplorationLogic:
                         level.not_altars.add((int(pos[0]), int(pos[1])))
                         return
                 r = re.search(r'There is an altar to [a-zA-Z- ]+ \(([a-z]+)\) here.', self.agent.message or self.agent.popup[0])
-                assert r is not None, (self.agent.message, self.agent.popup)
+                if r is None:
+                    # the remembered altar is not here (misread glyph or stale map)
+                    del level.altars[pos]
+                    return
                 alignment = r.groups()[0]
                 assert alignment in Character.name_to_alignment, (alignment, self.agent.message)
                 alignment = Character.name_to_alignment[alignment]
