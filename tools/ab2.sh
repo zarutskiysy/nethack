@@ -1,6 +1,8 @@
 #!/bin/sh
-# usage: [JF_CFG=..] [JF_ROLE_CFG=..] tools/ab2.sh TAG IDS SEEDS JOBS  -- devrun of the current bot/ (snapshot per TAG)
+# usage: [JF_CFG=..] [JF_ROLE_CFG=..] [NHBOT_ROUTE=..] tools/ab2.sh TAG IDS SEEDS JOBS  -- devrun of the current solution
 TAG=$1; IDS=$2; SEEDS=$3; J=$4
-cd /Users/semyon/Nethack
+W=${NH_WORK:-/Users/semyon/Nethack}
+REPO=$(cd "$(dirname "$0")/.." && pwd)
+cd "$W"
 export JF_CFG JF_ROLE_CFG NHBOT_ROUTE
-exec dev/.venv/bin/python tools/devrun.py bot "$TAG" --ids "$IDS" --seeds "$SEEDS" -j "$J" >> "devruns/$TAG.log" 2>&1
+exec dev/.venv/bin/python "$REPO/tools/devrun.py" "$REPO" "$TAG" --ids "$IDS" --seeds "$SEEDS" -j "$J" >> "devruns/$TAG.log" 2>&1

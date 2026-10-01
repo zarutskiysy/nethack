@@ -16,7 +16,8 @@ import time
 import traceback
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+# the workspace holding evals/ and devruns/: outside the repo, so run outputs never land in the solution root
+ROOT = Path(os.environ.get("NH_WORK") or Path(__file__).resolve().parents[2])
 
 
 def play(args):
@@ -102,7 +103,7 @@ def main():
     snap = out / "bot_snapshot"
     if not snap.exists():
         import shutil
-        shutil.copytree(Path(a.bot).resolve(), snap, ignore=shutil.ignore_patterns("__pycache__"))
+        shutil.copytree(Path(a.bot).resolve(), snap, ignore=shutil.ignore_patterns("__pycache__", ".git"))
     (out / "jf_cfg.txt").write_text(os.environ.get("JF_CFG", "") + "\n" + os.environ.get("JF_ROLE_CFG", ""))
     bot_dir = str(snap)
     jobs = [(bot_dir, i, s, a.eval_id, str(out / f"{i}__{s}.json"), a.max_steps, a.secret)

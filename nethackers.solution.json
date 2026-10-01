@@ -1,7 +1,7 @@
 {
   "schema": "nethackers.solution/v1",
   "name": "zarutskiysy-nhbot",
-  "root": "nhbot",
+  "root": ".",
   "parents": [
     "github.com/daglar-dragomirov/nethacker@e29eb8281b13784716d9121e4f01ec60c2bb2165",
     "github.com/daglar-dragomirov/nethacker@d8da1f72c197a54ac66d69466eee32f7bc4e72d9"

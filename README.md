@@ -2,11 +2,16 @@
 
 A NetHack 3.6.6 bot for [NetHackers](https://nethackers.dunnolab.ai/).
 
-- `bot/` — the solution (`bot.py` with `make_agent()`), a single engine `bot/nhbot`, an AutoAscend
-  descendant forked from daglar-dragomirov/nethacker's `pf_s25p` (vkurenkov's "jawfish" s25 line).
-  MIT, see `bot/LICENSE`.
-- `tools/` — evaluation helpers: `sweep.py` (official `nethackers eval` over identities),
-  `devrun.py` (native or in-container runs on held-out seeds with death diagnostics),
-  `devcmp.py` (paired A/B comparison), `summary.py`.
+The repository root is the solution: `bot.py` exposes `make_agent()` (the hub's verifier scores the repo root).
 
-Changes over the parent are listed in `CHANGES.md`.
+- `nhbot/` — the main engine, an AutoAscend descendant forked from daglar-dragomirov/nethacker's `pf_s25p`
+  (vkurenkov's "jawfish" s25 line); MIT, see `LICENSE`.
+- `pf_hg/`, `pf_hh/`, `pf_pa/`, `pf_v35/`, `pf_v25/` — specialist engines from the same lineage, routed per identity
+  in `bot.py` (Healers, human Priests, Samurai), as in daglar-dragomirov/nethacker@e29eb82.
+- `roles.py` — per-identity overrides of engine settings.
+- `tools/` — evaluation helpers (not used by the bot): `sweep.py` (official `nethackers eval` over identities),
+  `devrun.py` (native or in-container runs on held-out seeds with death diagnostics), `devcmp.py` (paired A/B
+  comparison), `bands.py`, `summary.py`. They write to a workspace outside the repo (`$NH_WORK`, default: the
+  repo's parent directory).
+
+Changes over the parent engines are listed in `CHANGES.md`.

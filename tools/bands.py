@@ -5,10 +5,12 @@ usage: bands.py TAG [TAG ...]
 """
 import collections
 import json
+import os
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+# the workspace holding evals/ and devruns/: outside the repo, so run outputs never land in the solution root
+ROOT = Path(os.environ.get("NH_WORK") or Path(__file__).resolve().parents[2])
 BANDS = [(1, 4), (5, 9), (10, 15), (16, 20), (21, 24), (25, 29), (30, 99)]
 
 

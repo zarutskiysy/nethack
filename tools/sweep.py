@@ -5,12 +5,14 @@ usage: sweep.py BOT_DIR TAG [identity ...]   (no identities: all 73)
 Writes evals/TAG/<identity>.json; skips identities already evaluated.
 """
 import json
+import os
 import subprocess
 import sys
 import urllib.request
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+# the workspace holding evals/ and devruns/: outside the repo, so run outputs never land in the solution root
+ROOT = Path(os.environ.get("NH_WORK") or Path(__file__).resolve().parents[2])
 HUB = "https://nethackers.dunnolab.ai"
 
 

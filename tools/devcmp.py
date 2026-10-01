@@ -4,12 +4,14 @@
 usage: devcmp.py TAG_A [TAG_B]   -- one tag: per-identity summary and death causes
 """
 import json
+import os
 import statistics
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+# the workspace holding evals/ and devruns/: outside the repo, so run outputs never land in the solution root
+ROOT = Path(os.environ.get("NH_WORK") or Path(__file__).resolve().parents[2])
 
 
 def load(tag):
