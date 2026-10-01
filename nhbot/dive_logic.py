@@ -1954,7 +1954,8 @@ class DiveLogic:
             if zap is not None and self._wet_neighbours(bl.y, bl.x) == 0:
                 self._at_log(key, 'zap', f'an @ {d} away: zapping {wand.text!r} down')
                 return True, zap
-        if self._in_own_pit():
+        dwarf = agent.character.race == Character.DWARF
+        if self._in_own_pit() or d < (jf_config.AT_THREAT_NEAR_DWARF if dwarf else jf_config.AT_THREAT_NEAR):
             return False, None
         self._at_log(key, 'hold', f'no pit with an @ {d} away; hostiles at '
                                   f'{[(m[3].mname, int(m[0])) for m in agent.get_visible_monsters()[:4]]}')

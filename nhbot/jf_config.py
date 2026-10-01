@@ -1455,13 +1455,16 @@ RING_SCROLL_ROLES = ('Wizard',)     # role names for the scroll reading (None: e
 # PIT_AWARE_FIGHT keeps us there. 9% of the dives ended that way at Dlvl 9-24 (Woodland-/Green-/Grey-elves, soldiers and
 # their officers; Archeologists 15%), most within ~15 turns of landing. With a hostile @ within AT_THREAT_RADIUS (in view,
 # or seen there within AT_THREAT_MEMORY turns): a known wand of digging holes the floor at once (also one WAND_RESERVE
-# keeps for Medusa, below AT_THREAT_WAND_XL or at half HP); else no pit is started -- fight2 fights it on level ground and
-# the dig waits until it is dead or gone. One that stays no closer for AT_THREAT_STILL turns in view (asleep in its
-# barracks, stuck) doesn't hold the dig, nor does anything after AT_THREAT_MAX_HOLD turns of holding on a level. Above
-# Medusa's level only (her level and the mazes below keep their own plans); a dig already in our pit goes on.
+# keeps for Medusa, below AT_THREAT_WAND_XL or at half HP); else, if it is too far away to reach us before the pit
+# (AT_THREAT_NEAR), no pit is started -- fight2 fights it on level ground and the dig waits until it is dead or gone.
+# One that stays no closer for AT_THREAT_STILL turns in view (asleep in its barracks, stuck) doesn't hold the dig, nor
+# does anything after AT_THREAT_MAX_HOLD turns of holding on a level. Above Medusa's level only (her level and the mazes
+# below keep their own plans); a dig already in our pit goes on.
 AT_THREAT_AVOID = False
 AT_THREAT_RADIUS = 8                # distance (BFS steps, else Chebyshev) of an @ that holds a new pit
 AT_THREAT_RADIUS_DWARF = 5          # a dwarf's whole hole takes ~8 turns
+AT_THREAT_NEAR = 5                  # an @ closer than this is next to us before any pit: the dig starts as usual
+AT_THREAT_NEAR_DWARF = 3            # (fight2 meets it there with the dig's effort kept, dig.c 'continue digging')
 AT_THREAT_MEMORY = 10               # turns an @ seen within the radius keeps holding once out of view
 AT_THREAT_STILL = 4                 # turns an @ in view may stay no closer before we dig all the same
 AT_THREAT_MAX_HOLD = 40             # holding turns per level, at most
