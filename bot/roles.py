@@ -81,5 +81,7 @@ def apply(ident: str | None) -> dict[str, object]:
             raise AttributeError(f"roles: nhbot.{mod} has no {attr}")
         if attr == "GRIND_LEVELS" and isinstance(value, dict):
             value = {int(k): int(v) for k, v in value.items()}
+        if attr == "ROLE_GRIND_LEVELS" and isinstance(value, dict):
+            value = {r: {int(k): int(v) for k, v in t.items()} for r, t in value.items()}
         setattr(module, attr, value)
     return applied

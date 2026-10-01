@@ -1412,6 +1412,8 @@ FORCE_BOLT = True
 FORCE_BOLT_MAX_FAIL = 0.3
 # farthest target (1: only instead of melee; ranged casts start fights the pet would have fought)
 FORCE_BOLT_MAX_DIST = 6
+# the grind's level table per role name (global_logic._grind_level; {}: Dlvl 1 throughout), overriding GRIND_LEVELS
+ROLE_GRIND_LEVELS = {'Wizard': {}, 'Knight': {}, 'Tourist': {}, 'Priest': {}}
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
