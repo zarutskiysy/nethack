@@ -258,11 +258,17 @@ class KnownItemsGuard:
         wand, _ = mino._wand(('striking',))
         if wand is not None:
             yield ('zap', (wand, direction, target), f'known striking at the {name}')
+        # RAY_BOUNCE_FIX: cold and fire are rays too -- with a wall close behind the target the bolt bounces back
+        # through us (6d6): 7 of our dev deaths were our own bounce (a5 arc-dwa s319: cold at an earth elemental).
+        # A Valkyrie resists cold; otherwise these need the same free run as the other rays, even when critical.
+        safe_run = not jf_config.RAY_BOUNCE_FIX or \
+            self._free_run_behind(target, dy, dx) >= jf_config.KNOWN_ITEMS_RAY_RUN
         wand, _ = mino._wand(('cold',))
-        if wand is not None and not dive.cold_reserved(wand):
+        if wand is not None and not dive.cold_reserved(wand) and \
+                (safe_run or getattr(agent.character, 'role', None) == getattr(agent.character, 'VALKYRIE', -1)):
             yield ('zap', (wand, direction, target), f'known cold at the {name}')
         wand, _ = mino._wand(('fire',))
-        if wand is not None:
+        if wand is not None and safe_run:
             yield ('zap', (wand, direction, target), f'known fire at the {name}')
         if ray_ok:
             wand, wname = mino._wand(('lightning', 'magic missile'))

@@ -1416,6 +1416,8 @@ PANIC_TILE_FIX = True
 # DIG_TOOL_MELEE (agent._keep_digging_tool_wielded): diving, fight with the wielded pick-axe/mattock unless the best weapon
 # beats it by this factor in expected damage per turn
 DIG_TOOL_MELEE = True
+# RAY_BOUNCE_FIX (known_items): known cold/fire wands need a free run behind the target, like the other rays
+RAY_BOUNCE_FIX = True
 DIG_TOOL_MELEE_MARGIN = 1.3
 # DITCH_RETRY (dive_logic._ditch_pet_check): a pet ditch that ran out of time is retried (DITCH_PET_TRIES)
 DITCH_RETRY = True
