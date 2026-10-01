@@ -5964,9 +5964,15 @@ class DiveLogic:
             return False   # on our scroll of scare monster: nothing melees us, and the pit doesn't remove it
         blind = agent.character.prop.blind
         self._look_after_sight()   # MEDUSA_BLIND_DIG
-        if not blind and (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
-            return False
         bl = agent.blstats
+        tries = self.__dict__.setdefault('_elbereth_tries', {})
+        # ELBERETH_REWRITE_FIX: the writes up to the last whole read-back don't count against the cap
+        held = self.__dict__.setdefault('_elbereth_held', {})
+        if not blind and (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
+            if jf_config.ELBERETH_REWRITE_FIX:
+                spot = (agent.current_level().key(), bl.y, bl.x, self._in_own_pit())
+                held[spot] = tries.get(spot, 0)
+            return False
         near = [m for m in agent.get_visible_monsters()
                 if max(abs(m[1] - bl.y), abs(m[2] - bl.x)) <= ELBERETH_DIG_RADIUS and
                 not self._melee_ignores_elbereth(m[3])]
@@ -5974,7 +5980,6 @@ class DiveLogic:
         # base-jf16 s13: a giant ant, base-jf16 s9: a panther -- all Elbereth-respecting -- killed fainted
         # diggers); the engraving holds them off while we're out
         spot = (agent.current_level().key(), bl.y, bl.x, self._in_own_pit())
-        tries = self.__dict__.setdefault('_elbereth_tries', {})
         # the pit erased the Elbereth we needed before it: the monsters that made us engrave are still around
         # even if out of sight now (base-public s14: an invisible ogre king hit us in the fresh pit; s1: a
         # chameleon)
@@ -5991,7 +5996,7 @@ class DiveLogic:
             last = self.__dict__.setdefault('_engrave_turn', {}).get(spot)
             if tries.get(spot, 0) >= ELBERETH_TRIES_BLIND or (last is not None and not self._hurt_since(last)):
                 return False
-        elif tries.get(spot, 0) >= ELBERETH_TRIES_ESCAPE:
+        elif tries.get(spot, 0) - (held.get(spot, 0) if jf_config.ELBERETH_REWRITE_FIX else 0) >= ELBERETH_TRIES_ESCAPE:
             return False
         tries[spot] = tries.get(spot, 0) + 1
         self.__dict__.setdefault('_engrave_turn', {})[spot] = bl.time
@@ -6127,6 +6132,9 @@ class DiveLogic:
                     any(s in msg for s in ('You can hear again', 'You regain consciousness', 'You faint')):
                 self._dig_tries[key] = tries - 1
                 if agent.blstats.hunger_state <= Hunger.FAINTING:   # not passed out again
+                    if jf_config.ELBERETH_REWRITE_FIX and not agent.character.prop.blind and \
+                            (agent.inventory.engraving_below_me or '').lower() != 'elbereth':
+                        return   # the faint's wipes: the next call writes it again first (_elbereth_before_digging)
                     continue
             break
         if prompted and 'dig a pit in the' in msg:

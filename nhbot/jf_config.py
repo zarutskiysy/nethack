@@ -1421,6 +1421,12 @@ RAY_BOUNCE_FIX = True
 DIG_TOOL_MELEE_MARGIN = 1.3
 # DITCH_RETRY (dive_logic._ditch_pet_check): a pet ditch that ran out of time is retried (DITCH_PET_TRIES)
 DITCH_RETRY = True
+# ELBERETH_REWRITE_FIX (dive_logic.dig_with_tool, _elbereth_before_digging_escape): waking from a faint mid-dig, a
+# garbled Elbereth is rewritten before the pick goes on (w1 wiz-gno-neu-mal s15 read '_lbcreth' after a faint on Dlvl 23,
+# re-applied the pick at once and was killed by a wood golem in the next faint); the per-square cap
+# (ELBERETH_TRIES_ESCAPE) counts only the writes since the engraving last read back whole, so a long dig's wipes don't
+# use it up
+ELBERETH_REWRITE_FIX = True
 # the grind's level table per role name (global_logic._grind_level; {}: Dlvl 1 throughout), overriding GRIND_LEVELS.
 # eL1fe (cfc38282): with working force bolt the Dlvl-3 grind pays for Wizards (+12.6 on 48 paired games); Rogues keep
 # Dlvl 1 (+3.3/+4.1). Their Priest (-1.9/-2.7) and Knight (+2.8/-1.4) numbers showed no gain and Tourists were not
