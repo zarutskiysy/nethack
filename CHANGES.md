@@ -5,7 +5,8 @@
   CleverShovel 0d1fb22: never into shops, never flying on into a pet), healing spells for any role that knows them,
   stoning cures, a known teleport scroll as a last resort, no throwing where the pet may stand unseen, Wizards and
   Healers keep off metal body armor/gloves/heavy shields (spell failure), Archeologists dig out of shops, magic
-  mapping from Dlvl 3, trees unwalkable, Sokoban/altar robustness, and the Dlvl-1-only grind kept for Rogues only.
+  mapping from Dlvl 3, trees unwalkable, Sokoban/altar robustness. Wizards grind on Dlvl 1-3 as in eL1fe's engine;
+  Rogues, Knights, Tourists and Priests keep the Dlvl-1-only grind (`ROLE_GRIND_LEVELS`).
   (I found the cast bug independently; eL1fe's version is used.)
 - **Identity router** as in daglar-dragomirov/nethacker@e29eb82 (the verified-tier leader): Healers (pf_hg, pf_hh),
   human Priests (pf_pa) and Samurai (pf_v35) play specialist engines; everyone else plays nhbot with DIVE_XL 8
@@ -25,3 +26,5 @@
   (`PANIC_TILE_FIX`; one grind sat 38k turns), divers keep fighting with the wielded pick-axe/mattock unless the best
   weapon is clearly better (`DIG_TOOL_MELEE`), a timed-out pet ditch is retried (`DITCH_RETRY`), a trapping gas spore is
   only hit when its blast can't kill (`SPORE_TRAP_FIX`).
+- Known cold/fire wands are zapped only with a free run of squares behind the target (`RAY_BOUNCE_FIX`): seven logged
+  deaths came from the bot's own bounced ray.
