@@ -1409,6 +1409,10 @@ ELBERETH_FUTILE = True
 
 # FORCE_BOLT (fight_heur.force_bolt_actions, eL1fe's port of CleverShovel 0d1fb22): cast force bolt in fights
 FORCE_BOLT = True
+# SPORE_TRAP_FIX (fight_heur.melee_monster_priority): the trapped-by-a-gas-spore melee only when its blast can't kill us
+SPORE_TRAP_FIX = True
+# DITCH_RETRY (dive_logic._ditch_pet_check): a pet ditch that ran out of time is retried (DITCH_PET_TRIES)
+DITCH_RETRY = True
 # the grind's level table per role name (global_logic._grind_level; {}: Dlvl 1 throughout), overriding GRIND_LEVELS.
 # eL1fe (cfc38282): with working force bolt the Dlvl-3 grind pays for Wizards; Rogues keep Dlvl 1 (+3.3/+4.1)
 ROLE_GRIND_LEVELS = {'Rogue': {}}

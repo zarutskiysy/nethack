@@ -549,6 +549,7 @@ DITCH_PET_BUDGET = 300
 # mon_catchup_elapsed_time makes it wild, and a pony or little dog is harmless to an XL 8 fighter.
 DITCH_PET_ROLES = frozenset((Character.KNIGHT, Character.SAMURAI))
 DITCH_PET_TRIES = 3            # attempts when the pet didn't follow us down (keepdogs needs it adjacent)
+DITCH_RETRY_WAIT = 400         # DITCH_RETRY: turns before another try after one ran out of time
 # dogmove.c:361-395: confused at hungrytime + 500, starves at + 750; don't herd a pet that is in that
 # window to the stairs (it bites an adjacent hero at random)
 PET_HUNGER_WINDOW = 750 - 500
@@ -4958,6 +4959,8 @@ class DiveLogic:
         agent = self.agent
         bl = agent.blstats
         if self._ditch_state == 0:
+            if bl.time < getattr(self, '_ditch_retry_after', -1):
+                return False
             if level.key() != first or not agent.has_pet or agent.get_visible_monsters() or \
                     bl.hitpoints < 0.8 * bl.max_hitpoints:
                 return False
@@ -4978,6 +4981,13 @@ class DiveLogic:
             self._ditch_pet_came = False
         if bl.time - self._ditch_started > DITCH_PET_BUDGET:
             agent.log(f'DITCH pet: out of time (state {self._ditch_state})')
+            if jf_config.DITCH_RETRY and self._ditch_tries < DITCH_PET_TRIES:
+                # DITCH_RETRY: one timed-out walk to the stairs (the pet wandered off) ended the ditch for good, and a
+                # Knight fed the pony its apples and carrots until they ran out; the starving horse then kicked it to
+                # death (all_v1 kni s1, T4494). Try again later.
+                self._ditch_state = 0
+                self._ditch_retry_after = bl.time + DITCH_RETRY_WAIT
+                return False
             self._ditch_state = 3
             return False
         return True

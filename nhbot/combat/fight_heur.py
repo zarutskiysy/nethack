@@ -84,8 +84,12 @@ def melee_monster_priority(agent, monsters, monster):
         if spore_blast_hits_friend(agent, y, x):
             return ret - 200
         # handle a specific case when you are trapped by a gas spore
-        if len(agent.get_visible_monsters()) == 1 \
-                and agent.blstats.hitpoints / agent.blstats.max_hitpoints:
+        # SPORE_TRAP_FIX: the HP test was a ratio, true at any HP: a trapped hero hit the spore at 9 HP and its
+        # 4d6 blast (explode.c, up to 24) killed it. A spore never attacks (AT_BOOM only when it dies), so waiting
+        # for it to float off is safe; hit it only when the blast cannot kill us.
+        if len(agent.get_visible_monsters()) == 1 and \
+                (agent.blstats.hitpoints > 24 if jf_config.SPORE_TRAP_FIX
+                 else agent.blstats.hitpoints / agent.blstats.max_hitpoints):
             dis = agent.bfs()
             for y2, x2 in zip(*np.nonzero(dis != -1)):
                 if not adjacent((y, x), (y2, x2)):
