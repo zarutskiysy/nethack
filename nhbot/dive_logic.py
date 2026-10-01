@@ -1024,6 +1024,10 @@ class DiveLogic:
         self._medusa_hops = 0              # moat steps toward dry land on Medusa's level (MEDUSA_HOP)
         self._eel_hold_turn = -10          # last turn an eel/kraken grabbed us (or we failed to break free)
         self._eel_engraved = -10           # last turn we engraved Elbereth against such a hold
+        self._at_obs = []                  # AT_THREAT_AVOID: (turn, level key, distance of the nearest @ in view)
+        self._at_seen = None               # AT_THREAT_AVOID: (level key, turn) an @ was last seen within the radius
+        self._at_holds = {}                # AT_THREAT_AVOID: level key -> turns the dig was held there
+        self._at_logged = set()            # AT_THREAT_AVOID: (level key, what) already logged
         self._fed_wait_start = None     # DIVE_FED: turn the grind first reached its end XL
         self._prayer_wait_start = None  # DIVE_PRAYER_GAP: turn the dive first had to wait for the prayer
         self._hp_wait_start = None      # DIVE_START_HP: turn the dive first had to wait for its HP
@@ -1885,6 +1889,88 @@ class DiveLogic:
         if name == 'unknown':
             return self.agent.blstats.time - self._hurt_on_elbereth <= 3
         return cls == MON.S_HUMAN or name == 'minotaur'
+
+    def _at_threat(self):
+        """AT_THREAT_AVOID: the distance of the nearest hostile Elbereth-ignoring meleer that holds a new pit here -- in
+        view within the radius and not standing off, or seen there during the last AT_THREAT_MEMORY turns -- else None."""
+        if not (jf_config.AT_THREAT_AVOID and self.diving):
+            return None
+        agent = self.agent
+        level = agent.current_level()
+        if level.dungeon_number != Level.DUNGEONS_OF_DOOM or self._wand_zone():
+            return None   # Medusa's level and the mazes below her keep their own plans
+        key = level.key()
+        bl = agent.blstats
+        now = bl.time
+        if self._at_holds.get(key, (None, 0))[1] >= jf_config.AT_THREAT_MAX_HOLD:
+            return None
+        dwarf = agent.character.race == Character.DWARF
+        radius = jf_config.AT_THREAT_RADIUS_DWARF if dwarf else jf_config.AT_THREAT_RADIUS
+        y0, x0 = int(bl.y), int(bl.x)
+        dists = []
+        for m in agent.get_visible_monsters():
+            if getattr(m[3], 'mname', '') == 'unknown' or not self._melee_ignores_elbereth(m[3]):
+                continue
+            # BFS steps where its square is reachable (an @ behind a wall is further away than it looks)
+            d = int(m[0]) if m[0] > 0 else max(abs(int(m[1]) - y0), abs(int(m[2]) - x0))
+            if d <= radius:
+                dists.append(d)
+        if not dists:
+            seen = self._at_seen
+            if seen is not None and seen[0] == key and now - seen[1] <= jf_config.AT_THREAT_MEMORY:
+                return radius
+            return None
+        d = min(dists)
+        obs = self._at_obs
+        if not obs or obs[-1][:2] != (now, key):
+            obs.append((now, key, d))
+            del obs[:-30]
+        self._at_seen = (key, now)
+        # standing off: in view all along for AT_THREAT_STILL turns, and no closer now than then
+        past = [o for o in obs if o[1] == key and o[0] <= now - jf_config.AT_THREAT_STILL]
+        if past:
+            run = [o for o in obs if o[1] == key and o[0] >= past[-1][0]]
+            if all(b[0] - a[0] <= 2 for a, b in zip(run, run[1:])) and d >= past[-1][2]:
+                return None
+        return d
+
+    def _at_hold(self):
+        """AT_THREAT_AVOID: (True, action) while an @ holds the dig here -- action is a wand of digging's zap down when
+        one may be spent, else None (fight2 fights the @, try_dig_down waits for it); (False, None): dig as usual. In
+        our own pit the dig goes on, though a wand still takes us through at once. Only for a pick-axe digger: without
+        one the wand is the dig, and WAND_FIRST zaps it as before."""
+        if self.digging_tool() is None:
+            return False, None
+        d = self._at_threat()
+        if d is None:
+            return False, None
+        agent = self.agent
+        bl = agent.blstats
+        key = agent.current_level().key()
+        wand = self._dig_wand()
+        if wand is not None and not self._wand_waits() and \
+                (bl.experience_level < jf_config.AT_THREAT_WAND_XL or bl.hitpoints < 0.5 * bl.max_hitpoints):
+            zap = self._wand_escape(wand)
+            if zap is not None and self._wet_neighbours(bl.y, bl.x) == 0:
+                self._at_log(key, 'zap', f'an @ {d} away: zapping {wand.text!r} down')
+                return True, zap
+        if self._in_own_pit():
+            return False, None
+        self._at_log(key, 'hold', f'no pit with an @ {d} away; hostiles at '
+                                  f'{[(m[3].mname, int(m[0])) for m in agent.get_visible_monsters()[:4]]}')
+        return True, None
+
+    def _at_count(self, key):
+        """AT_THREAT_AVOID: one more turn the dig waited on this level (AT_THREAT_MAX_HOLD)."""
+        now = self.agent.blstats.time
+        last, n = self._at_holds.get(key, (None, 0))
+        if last != now:
+            self._at_holds[key] = (now, n + 1)
+
+    def _at_log(self, key, what, text):
+        if (key, what) not in self._at_logged:
+            self._at_logged.add((key, what))
+            self.agent.log(f'DIVE AT_THREAT {text}')
 
     def on_medusa_level(self):
         return self.medusa_level is not None and self.agent.current_level().key() == self.medusa_level
@@ -3532,6 +3618,10 @@ class DiveLogic:
             # square): every attack stops the dig, so a hole takes ~12 turns of free hits -- fight instead
             # (dsafe-t2 jf25 s11 dug on under a soldier ant and a large dog, 58 -> 16 HP in 5 turns)
             return self._wand_escape(wand)
+        if jf_config.AT_THREAT_AVOID:
+            holding, act = self._at_hold()
+            if holding:
+                return act   # a zap down, or None: fight2 fights the @ on level ground and try_dig_down waits
         pit_ok = not self._in_own_pit() or (WAND_RESERVE and self._reserve_emergency())
         if WAND_FIRST and wand is not None and pit_ok and not self._wand_waits() and not self._wand_reserved():
             # with hostiles in view the wand's instant hole beats the pick's ~8 turns under attack (and a pit
@@ -5843,6 +5933,17 @@ class DiveLogic:
             for d, _, _, kind in self.down_targets():
                 if kind == 'stairs' and d <= DIG_STAIRS_RADIUS:
                     return False
+        if jf_config.AT_THREAT_AVOID and tool is not None:
+            holding, act = self._at_hold()
+            if holding:
+                # an @ comes for us (or was just in sight): no pit to be caught in -- fight2 meets it on level ground
+                self._at_count(key)
+                if act is not None:
+                    self._escape_act(act)
+                else:
+                    self._task('AT_THREAT hold')
+                    agent.search(1)
+                return True
         y, x = agent.blstats.y, agent.blstats.x
         candidates = utils.isin(level.objects, PLAIN_FLOOR) | ((level.objects == -1) & level.walkable)
         floor = [p for p in zip(*candidates.nonzero()) if dis[p] >= 0]
