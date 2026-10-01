@@ -350,6 +350,21 @@ MEDUSA_SKIP_FLOODS = 1
 MEDUSA_SKIP_REROLLS = 8
 MEDUSA_SKIP_FIRST = False      # on Medusa-3 (ravens) reroll at once, before any dig, while the '<' is close
 MEDUSA_SKIP_FIRST_STEPS = 4
+# MEDUSA_HOLE_CYCLE (with DIG_ESCAPE): a hole we dig drops exactly one level (dig.c digactualhole: dlevel + 1 -- so
+# MEDUSA_SKIP's reroll never skipped her level), but stepping into an existing hole or trap door falls 1 + Geom(1/4)
+# levels (trap.c fall_through: newlevel++ while !rn2(4)), with no stop at Medusa's level. Every variant puts her
+# level's '<' inside or beside the region a fall lands in (medusa.des '<' / fall region: medusa-1 (5,14) / (1-5,1-17),
+# medusa-2 (4,9) / (2-5,3-16), medusa-3 (32-39,1-7) / (33-38,2-7), medusa-4 (67-74,1-20) / (64-74,1-17)). So on her
+# level climb her '<' at once (ravens, snakes and titans don't follow: mon.c levl_follower wants M2_STALK), dig one hole
+# beside the '>' up there (that fall lands us on her level again), and from then on follow every climb by a step into
+# that hole: 1 time in 4 the fall carries us past her level, 3 in 4 it lands us beside her '<' again. No dig on her
+# islands (no flood roll), a few steps among her ravens per landing, a rest up there between landings. Medusa passes
+# before (devruns tr0/p0/v2a/mt*/a*): medusa-1 86%, -2 51%, -3 40%, -4 58%.
+MEDUSA_HOLE_CYCLE = False
+MEDUSA_HOLE_CYCLE_MAX = 20          # climbs off Medusa's level
+MEDUSA_HOLE_CYCLE_STEPS = 16        # her '<' this many BFS steps away at most (else the usual dig)
+MEDUSA_HOLE_CYCLE_HOLE_STEPS = 10   # our hole up there this many steps away at most (else the dive digs one)
+MEDUSA_HOLE_CYCLE_REST = 0.9        # rest up there to this HP fraction before the plunge (or a new dig)
 # RAVEN_CYCLE: Medusa-3's raven island. Every island square borders water, so a pick-axe hole succeeds only
 # 1/(n+1)^2 (1 in 4 at best, n = 1) and each flood drowns a square of the island: a pick digger needs 2-4
 # tries (Monte Carlo on the map: 44% by the 2nd, 51% by the 4th, 65% at most), and the 30 ravens (speed 20,
@@ -1012,6 +1027,8 @@ class DiveLogic:
         self._max_wet_cache = None         # (turn, level key, max_wet) for _dig_max_wet
         self._hurt_on_elbereth = -1        # last turn HP fell while we stood on an intact Elbereth
         self._medusa_rerolls = 0           # climbs off a wet Medusa islet to fall in again elsewhere
+        self._medusa_cycles = 0            # MEDUSA_HOLE_CYCLE climbs off Medusa's level
+        self._dug_holes = {}               # level key -> (y, x) of the last hole we fell through there
         self._dig_walk_blocked_until = -1  # turn until which DIG_ESCAPE doesn't walk to a dig square
         self._medusa_reroll_blocked_until = -1
         self._raven_levels = set()         # Medusa's level key once ravens were seen there (Medusa-3)
@@ -3373,6 +3390,20 @@ class DiveLogic:
         if what == 'reroll':
             self._medusa_reroll(arg)
             return
+        if what == 'cycle_up':
+            self._medusa_cycle_climb(arg)
+            return
+        if what == 'hole_walk':
+            self._raven_step_toward(arg)
+            return
+        if what == 'plunge':
+            self._medusa_plunge(arg)
+            return
+        if what == 'cycle_rest':
+            self._task('rest before the plunge')
+            if not self._rest_elbereth():
+                agent.search(1 if monsters else 10)
+            return
         if what == 'blind_engrave':
             tries = self.__dict__.setdefault('_elbereth_tries', {})
             tries[arg] = tries.get(arg, 0) + 1
@@ -3454,6 +3485,8 @@ class DiveLogic:
                       f'{f" (WAND_RESERVE zone zap {self._reserve_zaps})" if zone else ""}, hostiles at '
                       f'{[(m[3].mname, int(m[0])) for m in monsters[:3]]}')
             agent.zap(arg, '>')
+            if agent.current_level().key() != key:
+                self._dug_holes[key] = spot
             if agent.current_level().key() == key:
                 if 'here is too hard to dig' in agent.message:
                     self.undiggable.add(key)
@@ -3526,6 +3559,10 @@ class DiveLogic:
             # occupation only after the monsters' move), so a monster attacking every turn blocks all progress.
             # (dsafe-A jf16 s11 dug on in its pit beside a Grey-elf and a werewolf: 90 -> 12 HP, no hole.)
             return self._wand_escape(wand)
+        cycle = self._medusa_cycle_action()
+        if cycle is not None:
+            # MEDUSA_HOLE_CYCLE: no dig on her level; the hole above is the way down ('cycle_hold': fight first)
+            return None if cycle[0] == 'cycle_hold' else cycle
         blind_hold = self._blind_holding()
         if adjacent and agent._hurt_recently(2) and not self._elbereth_possible() and not blind_hold:
             # bitten while digging with no Elbereth under us and none to be had here (engrave cap, forbidden
@@ -4384,6 +4421,99 @@ class DiveLogic:
         with agent.atom_operation():
             agent.direction(agent.calc_direction(y0, x0, y, x))
         agent.log(f'DIVE MEDUSA_HOP: now at {(agent.blstats.y, agent.blstats.x)} ({agent.message[-100:]!r})')
+
+    def _above_medusa(self):
+        """This is the level right above Medusa's."""
+        if self.medusa_level is None:
+            return False
+        key = self.agent.current_level().key()
+        return int(key[0]) == int(self.medusa_level[0]) and int(key[1]) + 1 == int(self.medusa_level[1])
+
+    def _medusa_cycle_action(self):
+        """MEDUSA_HOLE_CYCLE (see there): ('cycle_up', '<') on her level, ('plunge', hole) / ('hole_walk', square) /
+        ('cycle_rest', None) on the level above once we have climbed off hers, else None."""
+        if not (MEDUSA_HOLE_CYCLE and DIG_ESCAPE and self.diving) or self.medusa_level is None or self.levitating():
+            return None
+        agent = self.agent
+        bl = agent.blstats
+        level = agent.current_level()
+        if self.on_medusa_level():
+            if self._medusa_cycles >= MEDUSA_HOLE_CYCLE_MAX or self._in_own_pit() or \
+                    bl.time < self._medusa_reroll_blocked_until:
+                return None
+            above = (self.medusa_level[0], self.medusa_level[1] - 1)
+            if not any(int(k[0]) == int(above[0]) and int(k[1]) == int(above[1]) for k in self._dug_holes) and \
+                    self.digging_tool() is None and self.digging_wand() is None:
+                return None   # no hole up there and nothing to dig one with
+            dis = agent.bfs()
+            ups = {(int(y), int(x)) for y, x in zip(*utils.isin(level.objects, G.STAIR_UP).nonzero())}
+            # the '<' we came down by shows us, not the stairs: the stair memory knows it
+            ups |= {(int(p[0]), int(p[1])) for p, dest in level.stair_destination.items()
+                    if dest[0][0] == level.dungeon_number and dest[0][1] < level.level_number}
+            reachable = [(dis[p], p) for p in ups if 0 <= dis[p] <= MEDUSA_HOLE_CYCLE_STEPS]
+            return ('cycle_up', min(reachable)[1]) if reachable else None
+        if self._medusa_cycles == 0 or not self._above_medusa() or bl.time < self._medusa_reroll_blocked_until:
+            return None
+        hole = self._dug_holes.get(level.key())
+        if hole is not None:
+            hy, hx = hole
+            if max(abs(hy - bl.y), abs(hx - bl.x)) > 1:
+                dis = agent.bfs()
+                near = [(dis[hy + dy, hx + dx], (hy + dy, hx + dx)) for dy in (-1, 0, 1) for dx in (-1, 0, 1)
+                        if (dy or dx) and 0 <= hy + dy < dis.shape[0] and 0 <= hx + dx < dis.shape[1] and
+                        0 <= dis[hy + dy, hx + dx] <= MEDUSA_HOLE_CYCLE_HOLE_STEPS]
+                if near:
+                    return ('hole_walk', min(near)[1])
+                hole = None   # too far: the dive digs a new one
+        # every landing down there costs HP (bc-smoke: 53 of 81 in 6 turns among Medusa-3's ravens): rest up here
+        # first -- beside the hole (the walk above comes first), or before digging one; fight what is close
+        if bl.hitpoints < MEDUSA_HOLE_CYCLE_REST * bl.max_hitpoints and not self._in_own_pit():
+            return ('cycle_hold', None) if self._near_hostiles(radius=2) else ('cycle_rest', None)
+        if hole is None:
+            return None   # the dive digs one (beside the '>' we arrived on; the '>' itself is avoided)
+        return ('plunge', hole)
+
+    def _medusa_cycle_climb(self, up):
+        agent = self.agent
+        if (agent.blstats.y, agent.blstats.x) != up:
+            if getattr(self, '_cycle_walk_logged', None) != (self._medusa_cycles, up):
+                self._cycle_walk_logged = (self._medusa_cycles, up)
+                agent.log(f'MEDUSA_HOLE_CYCLE: to her < at {up} (climb {self._medusa_cycles + 1}, '
+                          f'hp {agent.blstats.hitpoints}/{agent.blstats.max_hitpoints})')
+            start = (agent.blstats.y, agent.blstats.x)
+            turn = agent.blstats.time
+            self._raven_step_toward(up)
+            if (agent.blstats.y, agent.blstats.x) == start and agent.blstats.time == turn:
+                self._medusa_reroll_blocked_until = turn + 3   # no move and no turn: let the dig plan act
+            return
+        key = agent.current_level().key()
+        agent.log(f'MEDUSA_HOLE_CYCLE: climbing off her level (climb {self._medusa_cycles + 1})')
+        agent.move('<')
+        if agent.current_level().key() != key:
+            self._medusa_cycles += 1
+            # the '>' we stand on leads straight back onto her '<': our hole is the way down
+            self._avoid_stairs_until[(agent.current_level().key(), (agent.blstats.y, agent.blstats.x))] = 10 ** 9
+
+    def _medusa_plunge(self, hole):
+        agent = self.agent
+        key = agent.current_level().key()
+        hy, hx = hole
+        if agent.monster_tracker.monster_mask[hy, hx]:
+            agent.log(f'MEDUSA_HOLE_CYCLE: hitting the monster on our hole at {hole}')
+            agent.step(A.Command.FIGHT)
+            agent.direction(hy, hx)
+            return
+        agent.log(f'MEDUSA_HOLE_CYCLE: into our hole at {hole} (after climb {self._medusa_cycles}, '
+                  f'hp {agent.blstats.hitpoints}/{agent.blstats.max_hitpoints})')
+        turn = agent.blstats.time
+        agent.direction(hy, hx)
+        if agent.current_level().key() != key:
+            return
+        if (agent.blstats.y, agent.blstats.x) == (hy, hx):
+            agent.log('MEDUSA_HOLE_CYCLE: no fall -- the hole is gone')
+            self._dug_holes.pop(key, None)
+        elif agent.blstats.time == turn:
+            self._medusa_reroll_blocked_until = turn + 3
 
     def _medusa_reroll_stairs(self, max_wet):
         """DIG_ESCAPE on Medusa's level, stranded where every reachable square has >= MEDUSA_REROLL_WET moat
@@ -5821,6 +5951,12 @@ class DiveLogic:
             if not self._rest_elbereth():
                 agent.search(10)
             return True
+        cycle = self._medusa_cycle_action()
+        if cycle is not None:
+            if cycle[0] == 'cycle_hold':
+                return False   # MEDUSA_HOLE_CYCLE: hurt with a hostile close -- no plunge, no dig (fight2 fights)
+            self._escape_act(cycle)   # MEDUSA_HOLE_CYCLE
+            return True
         tool = self.digging_tool() if agent.blstats.time >= self._dig_blocked_until else None
         wand = self.digging_wand() if tool is None else None
         # WAND_RESERVE: on Medusa's level the kept wand holes the floor instead of the pick-axe (one flood roll and
@@ -5914,6 +6050,8 @@ class DiveLogic:
             return True
         agent.log(f'DIVE zapping {wand.text!r} down')
         agent.zap(wand, '>')
+        if agent.current_level().key() != key:
+            self._dug_holes[key] = (y, x)
         if agent.current_level().key() == key and ('too hard to dig' in agent.message or
                                                     'here is too hard' in agent.message):
             self.undiggable.add(key)
@@ -6123,6 +6261,7 @@ class DiveLogic:
                     agent.step(A.Command.ESC)
             msg = agent.message
             if agent.current_level().key() != key:
+                self._dug_holes[key] = spot   # (MEDUSA_HOLE_CYCLE) it stays open behind us
                 return
             # Waking from a faint: the deafness that came with it ends right after, and its 'You can hear
             # again' stops the new dig before any progress (a starving rescue dive spent ~300 turns and

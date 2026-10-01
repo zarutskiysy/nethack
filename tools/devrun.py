@@ -90,6 +90,7 @@ def main():
     p.add_argument("--secret", default="dev", help="'public' with --eval-id local replays the published batches")
     p.add_argument("-j", type=int, default=8)
     p.add_argument("--max-steps", type=int, default=1_000_000)
+    p.add_argument("--pairs", help="file of 'ident__seed' lines: play only these games (--ids still required)")
     a = p.parse_args()
     lo, _, hi = a.seeds.partition("-")
     seeds = range(int(lo), int(hi or lo) + 1)
@@ -106,8 +107,11 @@ def main():
         shutil.copytree(Path(a.bot).resolve(), snap, ignore=shutil.ignore_patterns("__pycache__", ".git"))
     (out / "jf_cfg.txt").write_text(os.environ.get("JF_CFG", "") + "\n" + os.environ.get("JF_ROLE_CFG", ""))
     bot_dir = str(snap)
+    pairs = [(i, s) for s in seeds for i in ids]
+    if a.pairs:   # only these games: lines 'ident__seed'
+        pairs = [(i, int(s)) for i, s in (ln.strip().split("__") for ln in open(a.pairs) if ln.strip())]
     jobs = [(bot_dir, i, s, a.eval_id, str(out / f"{i}__{s}.json"), a.max_steps, a.secret)
-            for s in seeds for i in ids if not (out / f"{i}__{s}.json").exists()]
+            for i, s in pairs if not (out / f"{i}__{s}.json").exists()]
     ctx = mp.get_context("spawn")
     with ctx.Pool(a.j, maxtasksperchild=1) as pool:
         for line in pool.imap_unordered(play, jobs):
