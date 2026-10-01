@@ -1414,8 +1414,10 @@ SPORE_TRAP_FIX = True
 # DITCH_RETRY (dive_logic._ditch_pet_check): a pet ditch that ran out of time is retried (DITCH_PET_TRIES)
 DITCH_RETRY = True
 # the grind's level table per role name (global_logic._grind_level; {}: Dlvl 1 throughout), overriding GRIND_LEVELS.
-# eL1fe (cfc38282): with working force bolt the Dlvl-3 grind pays for Wizards; Rogues keep Dlvl 1 (+3.3/+4.1)
-ROLE_GRIND_LEVELS = {'Rogue': {}}
+# eL1fe (cfc38282): with working force bolt the Dlvl-3 grind pays for Wizards (+12.6 on 48 paired games); Rogues keep
+# Dlvl 1 (+3.3/+4.1). Their Priest (-1.9/-2.7) and Knight (+2.8/-1.4) numbers showed no gain and Tourists were not
+# measured on this engine, so those keep e29eb82's Dlvl-1 grind too: only the Wizard leaves the list.
+ROLE_GRIND_LEVELS = {'Rogue': {}, 'Knight': {}, 'Tourist': {}, 'Priest': {}}
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
