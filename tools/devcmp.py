@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compare devrun tags episode by episode (paired on ident+seed).
 
-usage: devcmp.py TAG_A [TAG_B]   -- one tag: per-identity summary and death causes
+usage: devcmp.py TAG_A [TAG_B]   -- one tag: per-identity summary and death causes; TAG may be a+b (union)
 """
 import json
 import os
@@ -15,10 +15,12 @@ ROOT = Path(os.environ.get("NH_WORK") or Path(__file__).resolve().parents[2])
 
 
 def load(tag):
+    """One tag, or several joined with '+' (their union)."""
     out = {}
-    for f in (ROOT / "devruns" / tag).glob("*__*.json"):
-        r = json.loads(f.read_text())
-        out[(r["ident"], r["seed"])] = r
+    for t in tag.split("+"):
+        for f in (ROOT / "devruns" / t).glob("*__*.json"):
+            r = json.loads(f.read_text())
+            out[(r["ident"], r["seed"])] = r
     return out
 
 
