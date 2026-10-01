@@ -1204,6 +1204,7 @@ class DiveLogic:
                 if old_level is not None:
                     old_level.objects[prev[1]] = SS.S_trap_door
                     agent.log(f'DIVE fell through a trap door at {prev[1]} on {prev[0]}; remembered')
+                self._dug_holes[prev[0]] = (int(prev[1][0]), int(prev[1][1]))   # MEDUSA_HOLE_CYCLE
         self._last_pos = (key, pos)
         self.castle.note_level()
         self._note_digging_tools(key, pos)

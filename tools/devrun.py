@@ -112,6 +112,10 @@ def main():
         pairs = [(i, int(s)) for i, s in (ln.strip().split("__") for ln in open(a.pairs) if ln.strip())]
     jobs = [(bot_dir, i, s, a.eval_id, str(out / f"{i}__{s}.json"), a.max_steps, a.secret)
             for i, s in pairs if not (out / f"{i}__{s}.json").exists()]
+    # str hashes are salted per process unless PYTHONHASHSEED is set, and the bot's choices depend on set iteration
+    # order in places: without this two runs of one game diverge (v2a/rep1/rep2 arc-dwa-law-fem s204: D29 vs D24),
+    # and so do the two arms of an A/B long before the change under test acts
+    os.environ.setdefault("PYTHONHASHSEED", "0")
     ctx = mp.get_context("spawn")
     with ctx.Pool(a.j, maxtasksperchild=1) as pool:
         for line in pool.imap_unordered(play, jobs):
