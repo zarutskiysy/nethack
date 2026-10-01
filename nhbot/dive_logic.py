@@ -60,6 +60,14 @@ REST_BELOW = 0.66
 # Dwarves and gnomes find nearly every Mines inhabitant peaceful: bank Mines' End depth
 # (Dlvl 10-13, up to 0.26) safely before the main-dungeon dive.
 MINES_ROUTE = True
+# MINES_TOOL_TRIP: a planned dive with no digging tool takes the Mines route whatever our race (MINES_ROUTE was for
+# dwarves and gnomes only, whose Mines are peaceful). Humans, elves and orcs otherwise dove the main dungeon by stairs
+# and met a pick-carrying dwarf only by chance: 24 of 39 tool-less planned Wizard dives never reached the Mines
+# (EARLY_DETOUR needs a Mines level we already know, and the Dlvl-1 grind shows none), and tool-less dives averaged
+# 0.06 progress against 0.34 with a tool. In the Mines the camp (MINES_CAMP) hunts levels 1-4 for a dwarf (3 in 8
+# carry a pick-axe or a mattock, makemon.c m_initweap); with a tool the dive climbs back and digs the main dungeon,
+# without one it goes on down to Mines' End. Rescue dives keep the main stairs (see should_dive).
+MINES_TOOL_TRIP = False
 MINES_BRANCH_MAX_DEPTH = 4     # the Mines branch staircase is on Dlvl 2-4
 MINES_MIN_LEVELS = 8           # dungeon.def: the Mines have 8-9 levels, Mines' End is the last
 # XP gate inside the Mines: before going to Mines level k, explore the current level fully while
@@ -329,6 +337,14 @@ MEDUSA_REROLLS = 3
 # MEDUSA_SKIP_FLOODS times or the best square has MEDUSA_REROLL_WET moat neighbours; each hole dug from the level
 # above skips Medusa's level 1 time in 4 (see _medusa_reroll_stairs)
 MEDUSA_SKIP = False
+# MEDUSA_HOP: on Medusa's level (variant known, MEDUSA_MAP) with no dry diggable square on our own land, step into a
+# one-square moat channel toward land that has one. trap.c drown(): an unprotected hero in water crawls out at once to a
+# random free land square next to it (crawl_dest_ok), so the channel is crossed with odds (far-side squares) / (all
+# land squares around it), and a miss lands us back where we were. Costs a soaking (potions dilute, scrolls blank,
+# iron rusts). Medusa-4: 33% of arrivals land on the islet next to the north-east hut (6 dry squares) and cross with
+# 3/4 odds per try; Medusa-3's island has no such channel (see scripts/medusa_hop.py in the workspace).
+MEDUSA_HOP = False
+MEDUSA_HOP_MAX = 6             # soakings per Medusa level
 MEDUSA_SKIP_FLOODS = 1
 MEDUSA_SKIP_REROLLS = 8
 MEDUSA_SKIP_FIRST = False      # on Medusa-3 (ravens) reroll at once, before any dig, while the '<' is close
@@ -1000,6 +1016,7 @@ class DiveLogic:
         self._raven_contact_turn = -100    # last turn a hostile was next to us / hurt us on the raven island
         self._last_level_key = None
         self._medusa_floods = 0            # holes that flooded on Medusa's level (MEDUSA_SKIP)
+        self._medusa_hops = 0              # moat steps toward dry land on Medusa's level (MEDUSA_HOP)
         self._eel_hold_turn = -10          # last turn an eel/kraken grabbed us (or we failed to break free)
         self._eel_engraved = -10           # last turn we engraved Elbereth against such a hold
         self._fed_wait_start = None     # DIVE_FED: turn the grind first reached its end XL
@@ -2461,8 +2478,9 @@ class DiveLogic:
 
     def use_mines(self):
         # with a pick-axe, digging the main dungeon beats banking Mines' End
-        return MINES_ROUTE and not self.mines_done and \
-            self.agent.character.race in (Character.DWARF, Character.GNOME) and \
+        race_ok = self.agent.character.race in (Character.DWARF, Character.GNOME) or \
+            (MINES_TOOL_TRIP and self.diving and not self.rescue)
+        return MINES_ROUTE and not self.mines_done and race_ok and \
             (not self.diving or self.digging_tool() is None)
 
     def _stairs_down(self, level):
@@ -4264,6 +4282,104 @@ class DiveLogic:
         hist = [hp for t, hp in self._hp_history if t >= turn]
         return bool(hist) and max(hist) > self.agent.blstats.hitpoints
 
+    def _medusa_terrain(self):
+        """MEDUSA_HOP: (land, water) bool arrays of Medusa's level from the variant's fixed map, overridden by what the
+        bot has seen (a flooded dig square is water now). land: floor and doorways (walkable), water: moat/pool."""
+        from . import medusa_maps
+        agent = self.agent
+        level = agent.current_level()
+        name = self._medusa_variant_name()
+        h, w = level.objects.shape
+        land = np.zeros((h, w), dtype=bool)
+        water = np.zeros((h, w), dtype=bool)
+        for y in range(h):
+            for x in range(w):
+                seen = level.objects[y, x]
+                if seen in WET or agent.glyphs[y, x] in WET:
+                    water[y, x] = True
+                elif seen != -1:
+                    land[y, x] = bool(level.walkable[y, x]) and seen != SS.S_tree
+                else:
+                    c = medusa_maps.char_at(name, y, x)
+                    water[y, x] = c == '}'
+                    land[y, x] = c in '.+'
+        land[agent.blstats.y, agent.blstats.x] = True
+        water[agent.blstats.y, agent.blstats.x] = False
+        return land, water
+
+    def _medusa_hop_plan(self):
+        """MEDUSA_HOP: ('walk', square next to the channel) / ('hop', channel square) / None. See MEDUSA_HOP."""
+        agent = self.agent
+        if not (self.diving and self.on_medusa_level()) or self.levitating() or \
+                self._medusa_hops >= MEDUSA_HOP_MAX or agent.blstats.carrying_capacity > 1 or \
+                self._medusa_variant_name() is None:
+            return None
+        level = agent.current_level()
+        land, water = self._medusa_terrain()
+        labels, _ = ndimage.label(land, structure=np.ones((3, 3), dtype=bool))
+        here = labels[agent.blstats.y, agent.blstats.x]
+        floor = land & utils.isin(level.objects, PLAIN_FLOOR) | land & (level.objects == -1)
+        floor &= ~utils.isin(level.objects, G.DOORS) & ~level.shop & ~level.shop_interior
+        wet_count = ndimage.convolve(water.astype(int), np.ones((3, 3), dtype=int), mode='constant')
+        dry = floor & (wet_count == 0)
+        for (k, (by, bx)) in self._bad_dig_spots:
+            if k == level.key():
+                dry[by, bx] = False
+        if (dry & (labels == here)).any():
+            return None   # a dry square on our own land: the ordinary walk-and-dig
+        good = set(int(v) for v in np.unique(labels[dry]) if v) - {int(here)}
+        if not good:
+            return None
+        dis = agent.bfs()
+        mons = agent.monster_tracker.monster_mask
+        h, w = land.shape
+        best = None
+        for wy, wx in zip(*water.nonzero()):
+            if mons[wy, wx]:
+                continue   # an eel or a jellyfish in the channel: stepping there attacks it
+            ours, far, free = [], 0, 0
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    y, x = wy + dy, wx + dx
+                    if (dy, dx) == (0, 0) or not (0 <= y < h and 0 <= x < w) or not land[y, x]:
+                        continue
+                    if labels[y, x] == here:
+                        if dis[y, x] >= 0:
+                            ours.append((int(dis[y, x]), (int(y), int(x))))
+                        free += 1
+                    elif not mons[y, x]:
+                        free += 1
+                        far += int(labels[y, x]) in good
+            if not ours or not far:
+                continue
+            d, origin = min(ours)
+            key = (-far / max(free, 1), d)
+            if best is None or key < best[0]:
+                best = (key, origin, (int(wy), int(wx)))
+        if best is None:
+            return None
+        _, origin, channel = best
+        if (agent.blstats.y, agent.blstats.x) != origin and \
+                not utils.adjacent((agent.blstats.y, agent.blstats.x), channel):
+            return ('walk', origin)
+        return ('hop', channel)
+
+    def _medusa_hop(self, plan):
+        agent = self.agent
+        kind, (y, x) = plan
+        if kind == 'walk':
+            self._task('medusa hop: to the channel')
+            agent.log(f'DIVE MEDUSA_HOP: walking to {(y, x)} beside a moat channel toward dry land')
+            agent.go_to(y, x)
+            return
+        y0, x0 = agent.blstats.y, agent.blstats.x
+        self._medusa_hops += 1
+        self._task('medusa hop')
+        agent.log(f'DIVE MEDUSA_HOP {self._medusa_hops}: stepping into the moat at {(y, x)} from {(y0, x0)}')
+        with agent.atom_operation():
+            agent.direction(agent.calc_direction(y0, x0, y, x))
+        agent.log(f'DIVE MEDUSA_HOP: now at {(agent.blstats.y, agent.blstats.x)} ({agent.message[-100:]!r})')
+
     def _medusa_reroll_stairs(self, max_wet):
         """DIG_ESCAPE on Medusa's level, stranded where every reachable square has >= MEDUSA_REROLL_WET moat
         neighbours: a hole there floods with odds n/(n+1) at the pit and again at the hole (dig.c fillholetyp:
@@ -5694,7 +5810,12 @@ class DiveLogic:
         floor = [p for p in zip(*candidates.nonzero()) if dis[p] >= 0]
         max_wet = 0
         if not any(self._diggable_spot(*p) for p in floor):
-            # all reachable floor borders water: take the square with the fewest wet neighbours
+            # all reachable floor borders water: first a moat channel toward dry land (MEDUSA_HOP)
+            hop = self._medusa_hop_plan() if MEDUSA_HOP and tool is not None else None
+            if hop is not None:
+                self._medusa_hop(hop)
+                return True
+            # ... else take the square with the fewest wet neighbours
             wet = [self._wet_neighbours(*p) for p in floor if self._diggable_spot(*p, max_wet=8)]
             up = self._medusa_reroll_stairs(min(wet) if wet else None) if tool is not None else None
             if up is not None:
