@@ -26,9 +26,14 @@ SPECIALISTS = {
 def _specialist(ident):
     if not ident or os.environ.get("NHBOT_NO_SPECIALISTS"):
         return None
-    for prefix in sorted(SPECIALISTS, key=len, reverse=True):
+    table = dict(SPECIALISTS)
+    # dev runs: NHBOT_ROUTE='{"tou": "adapter_pf_v25"}' (an empty name routes to nhbot)
+    if os.environ.get("NHBOT_ROUTE"):
+        import json
+        table.update(json.loads(os.environ["NHBOT_ROUTE"]))
+    for prefix in sorted(table, key=len, reverse=True):
         if ident == prefix or ident.startswith(prefix + "-"):
-            return SPECIALISTS[prefix]
+            return table[prefix] or None
     return None
 
 
