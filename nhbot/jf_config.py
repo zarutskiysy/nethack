@@ -1601,10 +1601,9 @@ ELBERETH_REWRITE_FIX = True
 # eL1fe (cfc38282): with working force bolt the Dlvl-3 grind pays for Wizards (+12.6 on 48 paired games); Rogues keep
 # Dlvl 1 (+3.3/+4.1). Their Priest (-1.9/-2.7) and Knight (+2.8/-1.4) numbers showed no gain and Tourists were not
 # measured on this engine, so those keep e29eb82's Dlvl-1 grind too: only the Wizard leaves the list.
-# Knights grind deep again (the default GRIND_LEVELS): +0.022 +- 0.039 over 60 paired held-out games (kn0/kn1), and on
-# the hub's private seeds every engine with the default grind scores 0.29-0.30 on both Knight identities against
-# e29eb82's 0.227 with Knights on Dlvl 1.
-ROLE_GRIND_LEVELS = {'Rogue': {}, 'Tourist': {}, 'Priest': {}}
+# Knights on the default (deep) grind: -0.020 +- 0.023 over 160 paired held-out games (kn0/kn1), though every engine
+# with the default grind scores 0.29-0.30 on the hub's private Knight seeds against e29eb82's 0.227 -- kept on Dlvl 1.
+ROLE_GRIND_LEVELS = {'Rogue': {}, 'Knight': {}, 'Tourist': {}, 'Priest': {}}
 
 # DURABLE_ELBERETH (agent.engrave_durable, dive_logic.faint_guard): the faint guard's hold engraves its Elbereth with a
 # spare blade (three pieces, 8 helpless turns, the blade ends 3 points duller) or an athame (one piece, no dulling)
