@@ -344,6 +344,10 @@ def get_potential_wand_usages(agent, monsters, dy, dx):
     ret = []
     if missiles_risk_the_watch(agent):
         return ret
+    # FB_OVER_RAYS: in the grind a Wizard's force bolt replaces the ray plans, whose bounce killed three of them
+    if jf_config.FB_OVER_RAYS and _fb_castable(agent) and (
+            not getattr(getattr(getattr(agent, 'global_logic', None), 'dive', None), 'diving', True)):
+        return ret
     player_hp_ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
     # TODO: also get items recursively from bags
     for item in agent.inventory.items:
@@ -559,13 +563,13 @@ FORCE_BOLT_RANGE = 6  # the bolt flies rn1(8, 6) squares, so 6 always reaches
 FORCE_BOLT_MAX_RANGE = 13  # rn1(8, 6)
 
 
-def _force_bolt_tail_safe(agent, level, shop, y0, x0, sy, sx):
+def _force_bolt_tail_safe(agent, level, shop, y0, x0, sy, sx, reach=FORCE_BOLT_MAX_RANGE):
     """The bolt flies on past the monster it hits (bhit: range -= 3) and breaks fragile objects on its way:
     one killed a gnome zombie in a shop doorway and shattered a potion behind it (100 zorkmids, then the
     shopkeeper). Refuse a line that reaches a known shop, or two visible objects (shop stock we have not
     entered yet) before a wall; a lone corpse is no reason to melee instead."""
     objects = 0
-    for k in range(1, FORCE_BOLT_MAX_RANGE + 1):
+    for k in range(1, reach + 1):
         y, x = y0 + sy * k, x0 + sx * k
         if not (0 <= y < level.walkable.shape[0] and 0 <= x < level.walkable.shape[1]):
             return True
@@ -582,6 +586,80 @@ def _force_bolt_tail_safe(agent, level, shop, y0, x0, sy, sx):
         if not level.walkable[y, x] and level.seen[y, x]:
             return True
     return True
+
+
+def _fb_castable(agent):
+    """FB_OVER_RAYS: force bolt can be cast now (force_bolt_actions' own preconditions, before any target)."""
+    character = agent.character
+    try:
+        return bool(jf_config.FORCE_BOLT and 'force bolt' in getattr(character, 'known_spells', {}) and
+                    agent.blstats.energy >= 5 and agent.blstats.hunger_state < Hunger.WEAK and
+                    not character.prop.polymorph and agent.blstats.carrying_capacity < 2 and
+                    character.spell_fail_chance.get('force bolt', 1) <= 0.3 and
+                    not (jf_config.FB_SANITY and _fb_cannot_cast(agent)))
+    except Exception:
+        return False
+
+
+def _fb_cannot_cast(agent):
+    """FB_SANITY: spell.c rejectcasting(): stunned -> 'You are too impaired to cast a spell.' (no turn passes, so
+    fight2 chose the bolt again and again); spelleffects(): confused -> 'You fail to cast the spell correctly.' every
+    time, for half the Pw; or a refusal agent.cast saw lately ('Your arms are not free to cast!', 'You lack the
+    strength to cast spells.', a forgotten spell's backfire)."""
+    prop = agent.character.prop
+    if prop.stun or prop.confusion:
+        return True
+    return agent.blstats.time < getattr(agent, '_cast_refused_until', -1)
+
+
+def _fb_path_scares(agent, monsters, y0, x0, sy, sx, reach):
+    """FB_FOCUS on an Elbereth square: could the bolt hit something the engraving scares, or a peaceful? Every monster
+    the bolt passes is hit (zap.c bhit: ZAPPED_WAND goes on with range -= 3) and woken via_attack (bhitm -> wakeup ->
+    mon.c setmangry): 'You feel like a hypocrite.' (-5 alignment) and the engraving is deleted. The path ends where the
+    bolt stops: a seen wall or closed door."""
+    level = agent.current_level()
+    by_pos = {(int(m[1]), int(m[2])): m for m in monsters}
+    for k in range(1, reach + 1):
+        y, x = y0 + sy * k, x0 + sx * k
+        if not (0 <= y < level.walkable.shape[0] and 0 <= x < level.walkable.shape[1]):
+            return False
+        if not level.walkable[y, x] and level.seen[y, x]:
+            return False
+        g = agent.glyphs[y, x]
+        if g in G.MONS or g in G.INVISIBLE_MON or g in G.PETS:
+            m = by_pos.get((y, x))
+            if m is None or elbereth_attack_penalty(agent, monsters, m) != 0:
+                return True
+    return False
+
+
+def _fb_trivial(mon):
+    """FB_RESERVE: a monster one or two quarterstaff blows kill, no reason to spend the last bolts on (makemon
+    difficulty <= FB_RESERVE_DIFF, not faster than us). The passive and exploding kinds the bolt keeps us off
+    (floating eye, acid blob, molds, gas spore) are never trivial."""
+    name = getattr(mon, 'mname', '')
+    if name in ONLY_RANGED_SLOW_MONSTERS or name in EXPLODING_MONSTERS or name == 'unknown':
+        return False
+    return getattr(mon, 'difficulty', 99) <= jf_config.FB_RESERVE_DIFF and getattr(mon, 'mmove', 99) <= 12
+
+
+def _fb_reserve(agent):
+    """FB_RESERVE: the Pw kept for real threats (0: none): from XL FB_RESERVE_XL and HP >= FB_RESERVE_HP of max, at most
+    a third of max Pw."""
+    bl = agent.blstats
+    if bl.experience_level < jf_config.FB_RESERVE_XL or bl.hitpoints < jf_config.FB_RESERVE_HP * bl.max_hitpoints:
+        return 0
+    return min(int(jf_config.FB_RESERVE), int(bl.max_energy) // 3)
+
+
+def _fb_shopkeepers_home(agent, level):
+    """FB_SHOP_KNOWN: every shopkeeper in view stands in (or at the door of) a shop whose interior we know: the tail
+    check's dilated shop mask then keeps the bolt off the stock."""
+    if not level.shop_interior.any():
+        return False
+    known = utils.dilate(level.shop_interior, radius=1)
+    ys, xs = utils.isin(agent.glyphs, G.SHOPKEEPER).nonzero()
+    return all(known[y, x] for y, x in zip(ys, xs))
 
 
 def force_bolt_actions(agent, monsters):
@@ -601,17 +679,23 @@ def force_bolt_actions(agent, monsters):
         return []
     if character.spell_fail_chance.get('force bolt', 1) > 0.3:
         return []
-    if agent.inventory.engraving_below_me.lower() == 'elbereth':
+    if jf_config.FB_SANITY and _fb_cannot_cast(agent):
+        return []
+    on_elbereth = agent.inventory.engraving_below_me.lower() == 'elbereth'
+    if on_elbereth and not jf_config.FB_FOCUS:
         return []
     y0, x0 = agent.blstats.y, agent.blstats.x
     level = agent.current_level()
     # the bolt breaks fragile objects on its way: a shop's camera cost 200 zorkmids, then the shopkeeper
-    if level.shop_interior[y0, x0] or utils.isin(agent.glyphs, G.SHOPKEEPER).any():
+    if level.shop_interior[y0, x0] or (utils.isin(agent.glyphs, G.SHOPKEEPER).any() and
+                                        not (jf_config.FB_SHOP_KNOWN and _fb_shopkeepers_home(agent, level))):
         return []
     walkable = level.walkable
     peaceful = agent.monster_tracker.peaceful_monster_mask
     # ... and whatever lies under the monster it kills: a bolt from a shop's doorway shattered a potion
     shop = utils.dilate(level.shop_interior, radius=1) if level.shop_interior.any() else None
+    reach = int(jf_config.FB_TAIL_REACH) if jf_config.FB_SANITY else FORCE_BOLT_MAX_RANGE
+    reserve = _fb_reserve(agent) if jf_config.FB_RESERVE else 0
     best = None
     for monster in monsters:
         _, y, x, mon, _ = monster
@@ -628,9 +712,18 @@ def force_bolt_actions(agent, monsters):
             if not walkable[cy, cx] or agent.glyphs[cy, cx] in G.PETS or peaceful[cy, cx]:
                 clear = False
                 break
-        if not clear or not _force_bolt_tail_safe(agent, level, shop, y0, x0, sy, sx):
+        if not clear or not _force_bolt_tail_safe(agent, level, shop, y0, x0, sy, sx, reach):
+            continue
+        # FB_FOCUS: from an Elbereth square only at what it doesn't scare, with nothing it scares on the way
+        if on_elbereth and (elbereth_attack_penalty(agent, monsters, monster) != 0 or
+                            _fb_path_scares(agent, monsters, y0, x0, sy, sx, reach)):
+            continue
+        # FB_RESERVE: the last bolts are not for trivial monsters
+        if reserve and agent.blstats.energy - 5 < reserve and _fb_trivial(mon):
             continue
         priority = melee_monster_priority(agent, monsters, monster) + 2 if dist == 1 else 14
+        if jf_config.FB_FOCUS and dist == 1 and focus_ignorer(agent, mon):
+            priority += jf_config.AT_FOCUS   # as fight2's melee at the same adjacent ignorer (get_available_actions)
         if best is None or priority > best[0]:
             best = (priority, ('force_bolt', sy, sx))
     return [best] if best is not None else []

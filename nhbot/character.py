@@ -4,6 +4,7 @@ import nle.nethack as nh
 import numpy as np
 from nle.nethack import actions as A
 
+from . import jf_config
 from . import objects as O
 
 ALL_SPELL_NAMES = [
@@ -473,6 +474,10 @@ class Character:
                 assert len(matches) == 1, (matches, line)
                 letter, spell_name, level, category, fail, retention = matches[0]
                 assert len(letter) == 1, letter
+                # FB_SANITY: a spell whose memory has run out (spell.c: KEEN = 20000 turns after it was learnt -- every
+                # starting spell at T20000) only backfires: 'Your knowledge of this spell is twisted.'
+                if jf_config.FB_SANITY and retention == '(gone)':
+                    continue
                 self.known_spells[spell_name] = letter
                 self.spell_fail_chance[spell_name] = int(fail) / 100
         self.agent.step(A.Command.ESC)

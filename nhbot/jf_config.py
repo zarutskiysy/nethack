@@ -584,6 +584,17 @@ BEARTRAP_ESCAPE = True
 LYCAN_FIXES = True
 # no lycanthropy cure prayer while Hungry without food (wait for the Weak hunger prayer; see cure_disease)
 LYCAN_CURE_WAIT = False
+# PET_HUNGER_FIX (agent.eat_corpses_from_ground; research/wizard_deaths.md): '<pet> is confused from hunger.' (dogmove.c
+# dog_hunger: 500 turns past its hungrytime -- a starting pet that ate nothing by ~T1500; it starves 250 turns later)
+# means our pet goes for us: mon.c mfndpos gives a confused monster ALLOW_ALL, and dog_move then mattacku()s us from a
+# square it picks at random. fight2 never answers (the pet glyph is no target, and killing it is -15 alignment and
+# Luck -1, mon.c xkilled). All five 'killed by a kitten' Wizard deaths in b3/wz0/c0 were this, at XL 1-2 and
+# T1504-1625 -- fx1 wiz-hum-neu-mal__609: 'The kitten is confused from hunger.  You stop eating the jackal corpse.  The
+# kitten bites!', wz0 wiz-hum-cha-mal__643 bitten for 55 turns while searching. A meal cures it (dog_eat: mconf = 0), and
+# CLAIM_CORPSES (and the plain corpse eating) took the kills it would have eaten. With the flag, for PET_HUNGER_TURNS
+# turns after the message, or until a pet is seen eating, we eat no corpse off the floor unless we are Weak ourselves.
+PET_HUNGER_FIX = True
+PET_HUNGER_TURNS = 250
 # RECORD_MODEL_FIX (nhmodel/prayer.py on_prayer): the record +1 of pray.c:941 only for prayers made without major
 # trouble (the old rule also counted every hunger prayer, so record-0 heroes looked safe after their first prayer)
 RECORD_MODEL_FIX = True
@@ -659,6 +670,15 @@ LONE_WEAK_PDIE = 0.1
 # jf40 s12: two watchmen in Minetown, Luck -4, prayers held, died fainting 0.075; cmp-main jf41 s5 and base10arm
 # jf16 s11: shopkeeper Wonotobo). Only in the gc-h4 bundle so far (rejected as a whole, R032).
 SPORE_SAFE = True
+# HOSTILE_RECHECK (monster_tracker.update; research/wizard_deaths.md): the peaceful mask follows a monster from square to
+# square by its glyph and is re-read from the game only when that tracking is ambiguous -- and a peaceful that turns
+# hostile keeps its glyph. A former pet left on another level comes back untame but peaceful (dog.c
+# mon_catchup_elapsed_time); c1 wiz-gno-neu-mal__624 killed a gas spore with force bolt, 'The kitten is caught in the gas
+# spore's explosion!  The kitten hisses!' (explode.c -> mon.c setmangry), and the kitten bit the XL-7 Wizard 16 times
+# over 20 turns, a prayer included, while the bot searched and opened doors, never answering (dead at T10359). With the
+# flag a domestic animal (cat, dog, horse kinds) next to us that the mask calls peaceful is taken for hostile when a
+# message says it attacked us and it is the only one of its name next to us.
+HOSTILE_RECHECK = True
 # a floating eye is hit blindfolded (blindfold/towel on, F-attack, off again), else by a throw, else as before
 # ON (train 3.4, grind-combat A063): blindfold/towel on before meleeing a floating eye (jf16 s12 replay: no freeze, no rock-mole death)
 FEYE_BLIND = True
@@ -1554,6 +1574,14 @@ SHOP_DIG_AFTER = 300
 # soldier ant, 63 -> 0 HP (replay: 0.206 -> 0.507); 5 of 270 games were killed while hallucinating. The first version
 # also blocked it while stunned (1 in 4 per letter, ~7% whole): 30 stunned blocks in da-all2's 270 games, no gain.
 ELBERETH_FUTILE = True
+# ALTAR_NO_ENGRAVE (agent.can_engrave; research/wizard_deaths.md): engrave.c doengrave on an altar square writes nothing --
+# 'You make a motion towards the altar with your fingertip.' -- and calls pray.c altar_wrath: on a cross-aligned altar
+# 'Thou shalt pay, infidel!' and Luck -1 (rn2(20): -2), on our own -1 alignment and -1 Wis. With Luck < 0 every prayer is
+# 'too naughty' (pray.c can_pray: p_type 1, nothing fixed) until Luck times out. du1 wiz-orc-cha-mal__619 (and its wz0/c0
+# twins) stood on a Dlvl-3 altar for TC_ALTAR's BUC drop with a hostile large cat biting, wrote Elbereth there at T16755
+# ('Thou shalt pay, infidel!'), prayed at 6/48 HP three turns later and died praying. With the flag no Elbereth is
+# attempted on a known altar (the holds and fight2 then step off it or fight).
+ALTAR_NO_ENGRAVE = True
 # PYTHON_HOLD (research/deep_deaths.md): a python's AD_WRAP drowns us exactly like an eel's when it holds us from a pool
 # (mhitu.c AD_WRAP: u.ustuck and is_pool at the holder -> 'drowns you'), and Medusa-4's 14 random S often include
 # pythons that swim. ESCAPE_V2's hold escape (Elbereth at once: a scared holder lets go, monflee -> release) matched
@@ -1564,6 +1592,56 @@ PYTHON_HOLD = True
 
 # FORCE_BOLT (fight_heur.force_bolt_actions, eL1fe's port of CleverShovel 0d1fb22): cast force bolt in fights
 FORCE_BOLT = True
+# FB_FOCUS (combat/fight_heur.force_bolt_actions; research/wizard_deaths.md): the Wizard meleed every Elbereth-ignorer
+# with its quarterstaff (d6) instead of casting force bolt (2d12, zap.c bhitm) at it, with its Pw full:
+#  - AT_FOCUS adds 10 to fight2's MELEE priority on an ignorer (@ humans and elves, were-creatures in @ form,
+#    minotaurs, lawful minions) next to us, 16 + 10 = 26, and the bolt at the same monster stays at 16 + 2 = 18;
+#  - on an Elbereth square force_bolt_actions returned nothing at all -- but casting erases no engraving (spell.c has
+#    no u_wipe_engr; melee does, uhitm.c u_wipe_engr(3)) and mon.c setmangry's hypocrisy needs a monster the engraving
+#    scares (onscary) or a peaceful.
+# In 412 deduped Wizard games (b3/wz0/c0/c1/du1/fx1) 52 deaths came after meleeing such a monster with Pw >= 5 and no
+# bolt at it in the last 25 turns -- Green/Grey/Woodland-elves, soldiers and officers at Dlvl 7-26 in the dig-dive's pit
+# (b3 wiz-elf-cha-mal__607: a lieutenant, Pw 83/83; wz0 wiz-elf-cha-mal__619: a lieutenant, 10 swings, Pw 81/81), and
+# human-form wererats/werejackals in the grind (wz0 wiz-gno-neu-mal__633, Pw 42/63). With the flag the bolt gets the
+# same AT_FOCUS bonus (it wins over the melee, 28 vs 26), and from an Elbereth square it is cast at a target the
+# engraving doesn't scare when nothing it scares (or a peaceful) stands on the bolt's path (bhit goes on past its target).
+FB_FOCUS = True
+# FB_SANITY: casts the game refuses or wastes. spell.c: stunned -> 'You are too impaired to cast a spell.' (no turn; the
+# bot retried until the turn-inactivity watchdog: 170 such panics in 9 Wizard logs), confused -> 'You fail to cast the
+# spell correctly.' every time (half the Pw lost), a forgotten spell ('(gone)' in the menu: every starting spell at
+# T20000, KEEN) only backfires -- wz0 wiz-hum-cha-mal__633 cast its forgotten force bolt ~2800 times in 500 turns,
+# confused and stunned itself and died to a rothe at T22764; 'Your arms are not free to cast!' (a welded two-hander)
+# typed the spell letter as a command ('a': apply) 7 times a turn (du1 wiz-gno-neu-mal__627). With the flag: no cast
+# while stunned or confused, '(gone)' spells are not known, a refusal blocks casting for FB_REFUSE_TURNS turns, and the
+# bolt's tail check looks FB_TAIL_REACH squares ahead (zap.c bhit: rn1(8, 6) squares, 3 more spent on each monster
+# hit, so nothing past 10 squares is reached once the target is hit) instead of 13.
+FB_SANITY = True
+FB_REFUSE_TURNS = 20
+FB_TAIL_REACH = 10
+# FB_RESERVE (0: off; A/B): Pw kept for real threats. From XL FB_RESERVE_XL and at HP >= FB_RESERVE_HP of max, no bolt at
+# a monster of makemon difficulty <= FB_RESERVE_DIFF that isn't faster than us (newts, lichens, grid bugs, jackals,
+# rats, kobolds, geckos...) while the bolt would leave less than min(FB_RESERVE, max Pw / 3); passive and exploding kinds
+# keep their bolts. 27 of 127 Wizard grind deaths meleed their killer (rothes, giant ants, dwarves, hill orcs) with
+# Pw < 5 left, and about a quarter of the grind's bolts in the final message windows went to such trivial targets
+# (wz0 wiz-elf-cha-mal__634: 2 giant rats and 2 newts bolted, then killed by a pony at Pw 4/63). A Wizard regains ~1 Pw
+# per 8 turns at XL 6 (allmain.c), so each wasted bolt is ~40 turns of regeneration.
+FB_RESERVE = 0
+FB_RESERVE_XL = 4
+FB_RESERVE_HP = 0.6
+FB_RESERVE_DIFF = 2
+# FB_SHOP_KNOWN (off; A/B): no bolt at all while any shopkeeper is in view was meant for shops we have not entered yet
+# (their stock is unknown); once every visible shopkeeper stands in a shop whose interior we know, the tail check's
+# dilated shop mask already keeps the bolt off the stock. du1 wiz-gno-neu-mal__626 meleed a giant bat to death in a shop
+# doorway, the bat in the corridor outside, Pw 71/71.
+FB_SHOP_KNOWN = False
+# FB_OVER_RAYS: in the grind (not diving), fight2 makes no ray-wand plan (cold, fire, lightning, magic missile, death)
+# while force bolt can be cast: the bolt hits one monster for 2d12 and never comes back, the ray's bounce model knows only
+# the squares we have seen (get_next_states treats unseen ones as walls; diagonal bounces are a TODO). Three Wizard grind
+# deaths on SELF_ZAP_FIX code zapped a known ray with Pw left: fx1 wiz-orc-cha-mal__606 at 26/26 HP out of a dark corridor
+# ('The bolt of lightning bounces!  The bolt of lightning hits you!', Pw 66/66), c0 wiz-gno-neu-mal__619 (fire, from a
+# doorway, 17/30 HP, Pw 12) and fx1 wiz-elf-cha-mal__606 (lightning at a giant ant, Pw 68). The dive keeps its rays
+# (soldier ants, KNOWN_ITEMS).
+FB_OVER_RAYS = True
 # UNSEEN_PET_GUARD (combat/fight_heur.unseen_pet_may_be_at, eL1fe 76b511c): no throw or shot whose line or overshoot
 # crosses an unseen square the pet could have reached since it was last on screen (UNSEEN_PET_TURNS ago at most).
 # A/B it: on the hub's private seeds eL1fe's v6 -> v7 (this guard + the Archeologist shop dig) scored -0.024 per

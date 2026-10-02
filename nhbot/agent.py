@@ -57,6 +57,7 @@ class Agent:
 
         self._last_pet_seen = 0
         self._last_pet_where = None    # (level key, turn, [(y, x), ...]) where the pet was last on screen
+        self._pet_starving_until = -1  # PET_HUNGER_FIX: turn until which corpses on the floor are left to the pet
         self._corpse_debug_pos = None
         self._faint_msg_turn = None    # FAINT_MEASURE_FIX: turn of the screen that first showed a faint
         self._paralysis_end_turn = -10 ** 9   # STARVE_UNMEASURED_GAP: turn of the last 'You can move again'
@@ -470,6 +471,8 @@ class Agent:
         # TC_ROUTE (power_route.py): TC prompts, the tengu intrinsic and read effects are learned before the prompt
         # handling below answers them
         power_route.note_message(self)
+        if jf_config.PET_HUNGER_FIX:
+            self._note_pet_hunger()
         if jf_config.GENOCIDE_POLICY or jf_config.HORN_SCARE:
             # opp-items: genocide outcomes ('Wiped out' proves a stack not cursed), what an unknown horn turned out to be
             from . import opp_items
@@ -1939,6 +1942,11 @@ class Agent:
             self.direction(direction)
         return True
 
+    # FB_SANITY: the game's refusals of a cast (spell.c rejectcasting / spelleffects) and a forgotten spell's backfire
+    _CAST_REFUSED = re.compile(r"You are too impaired to cast|Your arms are not free to cast|You lack the strength to "
+                               r"cast|You are too hungry to cast|You are unable to chant|You don't know any spells|"
+                               r"Your knowledge of this spell is twisted")
+
     def cast(self, spell_name, direction):
         with self.atom_operation():
             dy, dx = direction
@@ -1960,10 +1968,14 @@ class Agent:
                 #     return
                 if 'You are too impaired' in self.message:
                     return
+                if jf_config.FB_SANITY and self._CAST_REFUSED.search(self.message):
+                    return   # no menu came up: the spell letter would be a command ('a': apply)
                 yield self.character.known_spells[spell_name]
                 for _ in range(3):
                     if 'In what direction?' in self.message:
                         break
+                    if jf_config.FB_SANITY and self._CAST_REFUSED.search(self.message):
+                        return
                     yield ' '
                 if 'In what direction?' in self.message:
                     success[0] = True
@@ -1975,6 +1987,10 @@ class Agent:
             else:
                 self.last_cast_fail_turn[spell_name] = self._last_turn
                 self.stats_logger.log_event(f'cast_fail_{spell_name}')
+                if jf_config.FB_SANITY and self._CAST_REFUSED.search(self.message):
+                    # fight2 would pick the same cast again at once (no game time passed): no casting for a while
+                    self._cast_refused_until = self.blstats.time + jf_config.FB_REFUSE_TURNS
+                    self.log(f'CAST refused ({spell_name}): {self.message.strip()[:120]!r}')
 
     def kick(self, y, x=None):
         if self.blstats.time < self._no_kick_until:
@@ -2130,7 +2146,18 @@ class Agent:
                 self._futile_logged = self.blstats.time
                 self.log('ELBERETH_FUTILE: no Elbereth while hallucinating')
             return False
+        if jf_config.ALTAR_NO_ENGRAVE and self._on_altar():
+            return False   # engrave.c: altar_wrath, Luck -1, and the next prayer fails
         return (self.blstats.y, self.blstats.x) != self._forbidden_engrave_position
+
+    def _on_altar(self):
+        """ALTAR_NO_ENGRAVE: we stand on a known altar (our glyph hides it; the level map remembers it)."""
+        try:
+            level = self.current_level()
+            y, x = int(self.blstats.y), int(self.blstats.x)
+            return (y, x) in level.altars or level.objects[y, x] in G.ALTAR
+        except Exception:
+            return False
 
     def engrave(self, text):
         assert '\r' not in text
@@ -3188,10 +3215,29 @@ class Agent:
             return False
         return weight + 2 * MON.permonst(monster_id + nh.GLYPH_MON_OFF).cwt <= self.character.carrying_capacity
 
+    _PET_EATS = re.compile(r"\b(?:kitten|housecat|large cat|little dog|dog|large dog|pony|horse|warhorse) eats ")
+
+    def _note_pet_hunger(self):
+        """PET_HUNGER_FIX: dogmove.c dog_hunger prints '<pet> is confused from hunger.' (only for a tame monster) once
+        it is 500 turns past its hungrytime; the pet eating something (dog_eat) ends it."""
+        bl = getattr(self, 'blstats', None)
+        if bl is None:
+            return
+        msg = self.message or ''
+        if 'is confused from hunger' in msg:
+            if self._pet_starving_until < bl.time:
+                self.log('PET starving (confused from hunger): leaving the corpses to it')
+            self._pet_starving_until = bl.time + jf_config.PET_HUNGER_TURNS
+        elif self._pet_starving_until >= bl.time and self._PET_EATS.search(msg):
+            self._pet_starving_until = -1
+
     @utils.debug_log('eat_corpses_from_ground')
     @Strategy.wrap
     def eat_corpses_from_ground(self, only_below_me=True, max_dist=None, max_age=None):
         # max_dist / max_age (CLAIM_CORPSES): only fresh corpses a few steps away
+        if jf_config.PET_HUNGER_FIX and self.blstats.time <= self._pet_starving_until and \
+                self.blstats.hunger_state < Hunger.WEAK:
+            yield False   # our starving pet bites us until it eats (see jf_config.PET_HUNGER_FIX)
         yielded = False
         level = self.current_level()
         to_eat = []  # (y, x, monster_id)
