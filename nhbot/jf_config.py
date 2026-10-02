@@ -1319,6 +1319,24 @@ TENGU_CORPSE_AGE = 25      # a tengu corpse older than this is left (CORPSE_MAX_
 # the trap door's Valley (0.691). Budgets 240 actions / 400 turns, HP >= 45%. Their ascension wish list is not
 # imported (it switched our teleport route off).
 CASTLE_TREASURY = True
+# CASTLE_WISH_FIRST (off pending a harness A/B; castle_treasury.py, research/castle_wish.md): the castle's wand of
+# wishing before the trap door, for every bot inside the walls. castle.des CONTAINER:('(',"chest"),not_trapped at one
+# of (04,02)/(58,02)/(04,14)/(58,14) (SHUFFLE), wand only (sp_lev.c delete_contents), locked 4 in 5 (mkobj.c; sp_lev's
+# default locked=0 keeps mksobj's roll), a cursed scroll of scare monster on top of it and a burned Elbereth under it:
+# the chest square is a melee refuge. Turns on:
+#  - all four towers (CASTLE_TREASURY searched only the first east one), nearest first, a tower whose chest square has
+#    been seen bare (floor glyph) or with a soldier standing on it (no scare scroll there) counted as checked, a tower
+#    whose chest square shows an object first;
+#  - a hostile on the way is fought (moat monsters routed around) instead of ending the detour; HP floor 20% / 5 HP,
+#    none on an unchecked chest square (scared monsters don't melee us there);
+#  - the lock: key > a wielded blade > any forceable weapon wielded (the dive's pick-axe: lock.c bashes, 2x its large
+#    die per turn) > a kick, from the tower floor rather than the moat-side wall (a kick hits the pile's top object --
+#    the scare scroll -- first, dokick.c);
+#  - on foot (the xorn form ran out in a tower): the chest of that tower, then the other tower on the same hallway
+#    (castle_treasury.foot_strategy).
+# Then the wand is zapped (the wish: WISH_TELEPORT_ROUTE's) and tele_route takes over: TC ring + cursed teleport scrolls
+# read on the castle -> Valley -> Dlvl ~45-50 (0.79-0.81) instead of the trap door's Valley (0.69).
+CASTLE_WISH_FIRST = False
 # CASTLE_PICK_MELEE (castle_cross._swap_for_fight; off pending a lift-suite A/B, research/deep_deaths.md castle section):
 # the castle's floating fights in the west maze (castle_cross._melee_adjacent, cl_route_step and _toward's blockers) wield
 # the 'best' melee weapon once after every dig, and the next dig's apply wields the pick again: two moves per interruption

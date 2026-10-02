@@ -1153,6 +1153,16 @@ class FrontDoor:
             return True
         content = chest.content
         if content is not None and content.locked:
+            from . import castle_treasury
+            tool = castle_treasury.unlock_tool(agent) if castle_treasury.wish_first() else None
+            if tool is not None and self.tries['unlock'] < castle_treasury.WISH_MAX_UNLOCK_TRIES:
+                # CASTLE_WISH_FIRST: a key / lock pick / credit card opens it without the blunt #force's 1-in-9 risk to
+                # the wand (lock.c breakchestlock: the box wrecked 1 time in 3, each object in it shattered 1 in 3)
+                self.tries['unlock'] += 1
+                self._set_state('unlocking the chest')
+                castle_treasury.apply_unlocker(agent, tool)
+                self._log(f'unlock: {agent.message[:160]!r}')
+                return True
             self.tries['force'] += 1
             if self.tries['force'] > 25:
                 self.chest_fail += 100

@@ -11,6 +11,7 @@ from . import jf_config
 from . import power
 from . import castle_power
 from . import castle_cross
+from . import castle_treasury
 from . import castle_front
 from . import castle_landing
 from . import mino_guard
@@ -1157,6 +1158,8 @@ class GlobalLogic:
                 # lift-ready (LIFT_KNOWN_RUSH): a known lasting lift on at once where castle arrivals land
                 castle_cross.known_rush_strategy(self.dive),
                 castle_cross.xorn_strategy(self.dive),
+                # CASTLE_WISH_FIRST (castle_treasury.py): the form ran out inside a castle tower -> on to its chest
+                castle_treasury.foot_strategy(self.dive),
                 # valley-exit (VALLEY_XORN): still a wall-walker in the Valley -> through its rock to the '>'
                 self.dive.valley_xorn(),
                 # ...out of the form in Gehennom with the wand and polymorph control -> a xorn again

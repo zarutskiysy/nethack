@@ -66,3 +66,12 @@
   (`roles.attributes_identity`, so the per-role config applies even when the welcome line is missed), and the Tourist
   engine `pf_dtad7a` (DT6A/nethacker@ad7a864) routed for `tou`. The `RING_MODULE`/`MEDUSA_HOP` module code is
   byte-identical to daglar's, so this reproduces the leader's behaviour exactly, with v4's extra fixes on top.
+- **castle-wish (CASTLE_WISH_FIRST, off; `nhbot/castle_treasury.py`, workspace `research/castle_wish.md`):** the
+  castle's wand of wishing before the trap door for every bot inside the walls -- all four towers (nearest first; a
+  tower whose chest square was seen bare or with a soldier on it is ruled out; one showing an object goes first), a
+  hostile on the way fought instead of ending the detour, no HP floor on the chest square (the cursed scare monster
+  scroll on it is a melee refuge), the lock opened by key > blade > any forceable weapon (the pick-axe bashes) > a
+  kick from the tower floor, and a walk on foot to the chest when the xorn form runs out inside a tower; FRONT_V3's
+  chest step uses a key first. Always on (bug fix): a wand taken from the chest is named (zapped) before the HP and
+  budget checks, which used to end the detour with it unnamed, out of WISH_TELEPORT_ROUTE's reach.
+  `tests/test_castle_wish.py` (fakes): `python tests/test_castle_wish.py`.
