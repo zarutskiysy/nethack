@@ -8,8 +8,8 @@
   mapping from Dlvl 3, trees unwalkable, Sokoban/altar robustness. Wizards grind on Dlvl 1-3 as in eL1fe's engine;
   Rogues, Knights, Tourists and Priests keep the Dlvl-1-only grind (`ROLE_GRIND_LEVELS`).
   (I found the cast bug independently; eL1fe's version is used.)
-- **Identity router** as in daglar-dragomirov/nethacker@e29eb82 (the verified-tier leader): Healers (pf_hg, pf_hh),
-  human Priests (pf_pa) and Samurai (pf_v35) play specialist engines; everyone else plays nhbot with DIVE_XL 8
+- **Identity router** as in daglar-dragomirov/nethacker@e29eb82 (the verified-tier leader): Healers (pf_hg, pf_hh)
+  and Samurai (pf_v35) play specialist engines; everyone else plays nhbot with DIVE_XL 8
   (nhbot is then identical to e29eb82's pf_base apart from the changes listed here).
 - `roles.py`: per-identity overrides of engine settings (only for nhbot identities).
 - `MEDUSA_HOP` (off pending A/B): on Medusa's level with no dry square on our islet, step into a one-square moat

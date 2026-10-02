@@ -13,12 +13,12 @@ os.environ.setdefault("NUMBA_CACHE_DIR", str(_cache_root / "numba"))
 import roles  # noqa: E402
 
 # identity prefix -> specialist engine adapter (from daglar-dragomirov/nethacker@e29eb82, chosen there on held-out
-# games): Healers on vlomshakov's engines, human Priests on PetrAnokhin's, Samurai on daglar's v35. Every other
-# identity plays the main engine, nhbot.
+# games): Healers on vlomshakov's engines, Samurai on daglar's v35. Every other identity plays the main engine, nhbot.
+# Human Priests left PetrAnokhin's pf_pa for nhbot (eL1fe's spell bundle casts their healing): +0.053 +- 0.022 per game
+# over 113 paired held-out games (ph0/ph1), in line with the hub's private seeds (dag25 0.260 vs pf_pa 0.228).
 SPECIALISTS = {
     "hea-gno": "adapter_pf_hg",
     "hea-hum": "adapter_pf_hh",
-    "pri-hum": "adapter_pf_pa",
     "sam": "adapter_pf_v35",
 }
 
