@@ -164,16 +164,18 @@ def ranger_point_blank_priority(agent, monster, default):
 # seed 0 died that way at T3395 on Dlvl 1; seed 13 hit an unseen pet twice: "It yelps!  The dagger hits it").
 # Only visible floor squares are known to be free of the pet. Every role that throws or fires (Rogue daggers,
 # Ranger arrows) faces the same risk, so it is not gated by role.
-UNSEEN_PET_TURNS = 20
+UNSEEN_PET_TURNS = 20   # (the value in use is jf_config.UNSEEN_PET_TURNS)
 
 
 def unseen_pet_may_be_at(agent, y, x):
+    if not jf_config.UNSEEN_PET_GUARD:
+        return False
     where = getattr(agent, '_last_pet_where', None)
     if where is None or agent.glyphs[y, x] in G.VISIBLE_FLOOR or utils.any_in(agent.glyphs, G.PETS):
         return False
     key, turn, positions = where
     elapsed = agent.blstats.time - turn
-    if key != (agent.blstats.dungeon_number, agent.blstats.level_number) or elapsed > UNSEEN_PET_TURNS:
+    if key != (agent.blstats.dungeon_number, agent.blstats.level_number) or elapsed > jf_config.UNSEEN_PET_TURNS:
         return False
     reach = 2 + int(1.5 * elapsed)   # a kitten is speed 18 against our 12
     if any(max(abs(py - y), abs(px - x)) <= reach for py, px in positions):

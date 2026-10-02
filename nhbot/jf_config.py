@@ -1409,6 +1409,12 @@ ELBERETH_FUTILE = True
 
 # FORCE_BOLT (fight_heur.force_bolt_actions, eL1fe's port of CleverShovel 0d1fb22): cast force bolt in fights
 FORCE_BOLT = True
+# UNSEEN_PET_GUARD (combat/fight_heur.unseen_pet_may_be_at, eL1fe 76b511c): no throw or shot whose line or overshoot
+# crosses an unseen square the pet could have reached since it was last on screen (UNSEEN_PET_TURNS ago at most).
+# A/B it: on the hub's private seeds eL1fe's v6 -> v7 (this guard + the Archeologist shop dig) scored -0.024 per
+# Ranger and -0.026 per Monk identity group, +0.025 per Priest group (research/code_mining_2.md C2)
+UNSEEN_PET_GUARD = True
+UNSEEN_PET_TURNS = 20
 # SPORE_TRAP_FIX (fight_heur.melee_monster_priority): the trapped-by-a-gas-spore melee only when its blast can't kill us
 SPORE_TRAP_FIX = True
 # PANIC_TILE_FIX (agent._note_repeated_panic): the loop breaker also forbids a square a monster keeps blocking
