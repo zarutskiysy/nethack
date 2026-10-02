@@ -7,6 +7,8 @@
 - **v9p2**: v9p plus three routes with one verified sample each: neutral human Archeologists and orcish Barbarians on
   pf_s25p8, neutral human Wizards on pf_vk_s25.
 
+- **v10a**: Healers and Samurai back on nhbot: every Healer and Samurai specialist lost to nhbot on 90 dev held-out
+  seeds (hea-gno pf_hg -0.050, hea-hum pf_hh -0.024, sam pf_v35 -0.051).
 - **eL1fe's fixes** (ported from eL1fe/nethacker@cfc3828, its `dag25` engine = this same base): the spell-direction fix
   (`Agent.cast` sent the compass string as keys: every aimed cast was wasted), force bolt for Wizards (from
   CleverShovel 0d1fb22: never into shops, never flying on into a pet), healing spells for any role that knows them,
