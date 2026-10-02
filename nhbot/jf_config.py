@@ -1601,7 +1601,10 @@ ELBERETH_REWRITE_FIX = True
 # eL1fe (cfc38282): with working force bolt the Dlvl-3 grind pays for Wizards (+12.6 on 48 paired games); Rogues keep
 # Dlvl 1 (+3.3/+4.1). Their Priest (-1.9/-2.7) and Knight (+2.8/-1.4) numbers showed no gain and Tourists were not
 # measured on this engine, so those keep e29eb82's Dlvl-1 grind too: only the Wizard leaves the list.
-ROLE_GRIND_LEVELS = {'Rogue': {}, 'Knight': {}, 'Tourist': {}, 'Priest': {}}
+# Knights grind deep again (the default GRIND_LEVELS): +0.022 +- 0.039 over 60 paired held-out games (kn0/kn1), and on
+# the hub's private seeds every engine with the default grind scores 0.29-0.30 on both Knight identities against
+# e29eb82's 0.227 with Knights on Dlvl 1.
+ROLE_GRIND_LEVELS = {'Rogue': {}, 'Tourist': {}, 'Priest': {}}
 
 # RING_MODULE (item/ring_amulet_logic.py, item/scroll_identify.py; tuning in item/ring_amulet_config.py): the ring/amulet
 # module of CleverShovel/nethacker@9dc0822 with the fixes of 29ab0a7 (identify-menu paging, harm-gated reading). It wears
