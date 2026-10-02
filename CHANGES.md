@@ -28,3 +28,6 @@
   only hit when its blast can't kill (`SPORE_TRAP_FIX`).
 - Known cold/fire wands are zapped only with a free run of squares behind the target (`RAY_BOUNCE_FIX`): seven logged
   deaths came from the bot's own bounced ray.
+- `AT_THREAT_AVOID` (off pending A/B): while an elf, soldier or other Elbereth-ignoring meleer comes for a pick-axe
+  digger above Medusa's level, no pit is started (every attack stops the dig; in the pit the fight is at -3 to-hit): a
+  known wand of digging holes the floor at once, else the @ is fought on level ground first.

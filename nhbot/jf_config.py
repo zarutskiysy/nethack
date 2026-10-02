@@ -1453,6 +1453,29 @@ RING_AMULET_TRIAL = False           # try unidentified amulets on (CleverShovel:
 RING_SCROLL_IDENTIFY = True         # read unknown scrolls at a safe moment to identify carried rings/amulets
 RING_SCROLL_ROLES = ('Wizard',)     # role names for the scroll reading (None: every role)
 
+# AT_THREAT_AVOID (dive_logic._at_hold): no new dig pit while an Elbereth-ignoring meleer -- an elf, a soldier or another
+# @, a minotaur -- is coming for us. Every attack, hit or miss, stops the dig occupation before its next turn (mhitu.c
+# stop_occupation; allmain.c also stops it for any unscared hostile next to us), and a pick-axe needs ~5 dig turns to the
+# pit and ~20 more to the hole (dig.c dig(): effort 10+rn2(5) a turn, the pit past 50, a fresh start in it, the hole past
+# 250; a dwarf's effort doubles each turn, ~8 turns in all). In the pit we fight at -3 to-hit (uhitm.c: u.utrap) and
+# PIT_AWARE_FIGHT keeps us there. 9% of the dives ended that way at Dlvl 9-24 (Woodland-/Green-/Grey-elves, soldiers and
+# their officers; Archeologists 15%), most within ~15 turns of landing. With a hostile @ within AT_THREAT_RADIUS (in view,
+# or seen there within AT_THREAT_MEMORY turns): a known wand of digging holes the floor at once (also one WAND_RESERVE
+# keeps for Medusa, below AT_THREAT_WAND_XL or at half HP); else, if it is too far away to reach us before the pit
+# (AT_THREAT_NEAR), no pit is started -- fight2 fights it on level ground and the dig waits until it is dead or gone.
+# One that stays no closer for AT_THREAT_STILL turns in view (asleep in its barracks, stuck) doesn't hold the dig, nor
+# does anything after AT_THREAT_MAX_HOLD turns of holding on a level. Above Medusa's level only (her level and the mazes
+# below keep their own plans); a dig already in our pit goes on.
+AT_THREAT_AVOID = False
+AT_THREAT_RADIUS = 8                # distance (BFS steps, else Chebyshev) of an @ that holds a new pit
+AT_THREAT_RADIUS_DWARF = 7          # a dwarf's whole hole takes ~8 actions (apply, 2 digs to the pit, apply, 4 digs)
+AT_THREAT_NEAR = 4                  # an @ closer than this is next to us before any pit (~5 actions: apply + 4-5 digs;
+AT_THREAT_NEAR_DWARF = 3            # a dwarf's 3): the dig starts as usual and fight2 meets it with the effort kept
+AT_THREAT_MEMORY = 10               # turns an @ seen within the radius keeps holding once out of view
+AT_THREAT_STILL = 4                 # turns an @ in view may stay no closer before we dig all the same
+AT_THREAT_MAX_HOLD = 40             # holding turns per level, at most
+AT_THREAT_WAND_XL = 10              # the kept wand of digging is spent on an @ below this XL (or at half HP)
+
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
