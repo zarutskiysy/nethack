@@ -18,10 +18,10 @@ import roles  # noqa: E402
 # over 113 paired held-out games (ph0/ph1), in line with the hub's private seeds (dag25 0.260 vs pf_pa 0.228).
 # v9p (private-safe): only routes that beat nhbot on the hub's VERIFIED (private-seed) tier; the public-seed-selected
 # ports of v6/v7 overfit and are left out, and Tourists are back on nhbot (pf_dtad7a: 0.127 verified vs nhbot ~0.15).
+# v10a: Healers and Samurai back on nhbot -- every Healer/Samurai specialist lost to nhbot on 90 DEV held-out seeds
+# (hea-gno pf_hg -0.050, hea-hum pf_hh -0.024, sam pf_v35 -0.051, pf_v37 -0.111); pre-probe hub runs of hea-gno on nhbot
+# scored 0.24-0.27 verified vs pf_hg 0.160.
 SPECIALISTS = {
-    "hea-gno": "adapter_pf_hg",
-    "hea-hum": "adapter_pf_hh",
-    "sam": "adapter_pf_v35",
     "arc-gno": "adapter_pf_v36",              # verified 0.405 vs nhbot 0.356
     "ran-hum-neu": "adapter_pf_s25p8",        # verified 0.31 vs nhbot 0.21-0.25
     "ran-elf-cha-fem": "adapter_pf_s25p8",    # verified 0.356 vs nhbot 0.325
@@ -29,7 +29,7 @@ SPECIALISTS = {
     # v9p2: the e29-family engines beat four verified runs of nhbot here as well (one verified sample each)
     "arc-hum-neu": "adapter_pf_s25p8",        # e29/pf_s25p 0.360/0.380 vs nhbot 0.31-0.33
     "bar-orc": "adapter_pf_s25p8",            # e29/pf_s25p8 0.45-0.48 vs nhbot 0.36-0.41
-    "wiz-hum-neu": "adapter_pf_vk_s25",       # pf_vk_s25 0.202 (e29 0.248) vs nhbot 0.12-0.15
+    "wiz-hum-neu": "adapter_pf_vk_s25",       # verified 0.125 here (nhbot 0.12-0.15); dev audit pending
 }
 
 
