@@ -26,6 +26,10 @@ SPECIALISTS = {
     "ran-hum-neu": "adapter_pf_s25p8",        # verified 0.31 vs nhbot 0.21-0.25
     "ran-elf-cha-fem": "adapter_pf_s25p8",    # verified 0.356 vs nhbot 0.325
     "kni": "adapter_pf_s25p8",                # verified 0.209/0.247 vs nhbot 0.144/0.144
+    # v9p2: the e29-family engines beat four verified runs of nhbot here as well (one verified sample each)
+    "arc-hum-neu": "adapter_pf_s25p8",        # e29/pf_s25p 0.360/0.380 vs nhbot 0.31-0.33
+    "bar-orc": "adapter_pf_s25p8",            # e29/pf_s25p8 0.45-0.48 vs nhbot 0.36-0.41
+    "wiz-hum-neu": "adapter_pf_vk_s25",       # pf_vk_s25 0.202 (e29 0.248) vs nhbot 0.12-0.15
 }
 
 
