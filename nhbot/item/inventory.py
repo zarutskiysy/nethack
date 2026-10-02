@@ -85,11 +85,15 @@ class Inventory:
         armour swap dropped all light loot and picked it up again (base-jf26 s14: 'The scroll turns to dust')."""
         if not item.can_be_dropped_from_inventory():
             return False
+        if power.kit_keep(self.agent, item) and item in self.items.all_items:
+            return False   # CASTLE_KIT_PICKUP: a known scare monster scroll stays (a re-pickup turns it to dust)
         return not (power.keep_scroll(item) and item in self.items.all_items)
 
     def dropped_here(self, item, pos=None):
         """A scroll that may be scare monster which we dropped on this square: never pick it up again."""
-        # (the set is filled only by SCARE_KEEP drops and by castle_power's arrival drill)
+        # (the set is filled only by SCARE_KEEP / CASTLE_KIT_PICKUP drops and by castle_power's arrival drill)
+        if power.kit_floor_dust(self.agent, item):
+            return True   # CASTLE_KIT_PICKUP: a known-cursed scare monster scroll crumbles when picked up
         if not self.dropped_scrolls or not power.is_scare_candidate(item):
             return False
         pos = pos if pos is not None else (self.agent.blstats.y, self.agent.blstats.x)
@@ -97,11 +101,14 @@ class Inventory:
             self.dropped_scrolls
 
     def _note_dropped(self, items, counts, force=False):
-        if not (jf_config.SCARE_KEEP or force):
+        if not (jf_config.SCARE_KEEP or force or jf_config.CASTLE_KIT_PICKUP):
             return
         here = (self.agent.current_level().key(), (int(self.agent.blstats.y), int(self.agent.blstats.x)))
         for item, count in zip(items, counts):
             if count and power.is_scare_candidate(item):
+                if jf_config.CASTLE_KIT_PICKUP and not (jf_config.SCARE_KEEP or force) and \
+                        power.scare_pickup_outcome(item.status, True) == 'unbless':
+                    continue   # blessed in our pack: one pickup only takes the blessing (pickup.c), never dust
                 self.dropped_scrolls.add(here + (self._scroll_key(item),))
 
     def set_unknown_below_me(self):

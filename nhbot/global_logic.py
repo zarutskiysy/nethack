@@ -149,6 +149,23 @@ class ItemPriority(ItemPriorityBase):
                         (item.is_launcher() or item.is_fired_projectile()):
                     add_item(item)
 
+        # CASTLE_KIT_PICKUP (research/strong_castle.md phase 2): one tonal instrument (the castle's passtune) and every
+        # known scroll of scare monster (the castle's base camp, Gehennom) ahead of the thrown weapons and the food
+        if jf_config.CASTLE_KIT_PICKUP:
+            best = None
+            for item in items:
+                rank = castle_tune.instrument_rank(item)
+                if rank is None:
+                    continue
+                key = (rank, not (item in forced_items or self._carried(item)), item.unit_weight(with_content=False))
+                if best is None or key < best[0]:
+                    best = (key, item)
+            if best is not None:
+                add_item(best[1], count=1)
+            for item in items:
+                if power.is_known_scare(self.agent, item) and not power.kit_floor_dust(self.agent, item):
+                    add_item(item)
+
         if self.agent.character.alignment == Character.LAWFUL:
             for item in sorted(filter(lambda i: i.objs[0].name == 'long sword', items),
                                key=lambda i: -utils.calc_dps(*self.agent.character.get_melee_bonus(i))):

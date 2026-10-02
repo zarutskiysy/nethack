@@ -1365,6 +1365,54 @@ PT_CRUSH = True            # the crusher loop (False: lower the bridge and hand 
 PT_CRUSH_MAX = 20          # raises at most
 PT_CRUSH_TURNS = 400       # turns of crusher at most
 PT_CRUSH_WAIT = 20         # turns the lowered bridge waits for a victim before the hand-over
+# CASTLE_BASECAMP (off pending a harness A/B; castle_tune.py, research/strong_castle.md block 1): the passtune lane
+# makes the shore survivable before and while it plays (tw1: 18 of 19 lane starts died or quit before the tune square --
+# sharks, eels, 'held by a sea monster', minotaurs, low-HP pauses on the moat's edge).
+#  - a KNOWN scroll of scare monster is dropped on the tune square when we first stand there (monmove.c onscary: it
+#    scares everything but Rodney, minions, Angels, Riders and shopkeepers/priests at home -- minotaurs, @ soldiers and
+#    eels too; a scared monster never melees, dochug !scared); that square is the base: we rest on it when hurt
+#    (the bridge raised first) instead of pausing, strike what stays next to us (no hypocrisy: no Elbereth written
+#    there), and the minotaur / crowd / sea-monster aborts don't apply on it. It is never picked up again (pickup.c:
+#    an uncursed scroll picked up once turns to dust the next time). dive_logic's CASTLE_SCARE hold knows the spot.
+#  - without one, the camp is a west-courtyard square with no water beside it ((03,08) first: sea monsters can't leave
+#    the moat): Elbereth there (burned with a known wand of fire, else engraved with DURABLE_ELBERETH's blade when
+#    that flag is on, else dust) and a rest to PT_CAMP_HP before every walk to the tune square, after a sea monster
+#    was seen and HP fell below PT_CAMP_SEA_HP, and instead of the PT_ABORT_HP pause when nothing is next to us.
+#  - the walk to the tune square avoids squares beside water (cost PT_CAMP_WATER_COST each) where it can.
+CASTLE_BASECAMP = False
+PT_CAMP_HP = 0.9           # rest at the camp to this share of HP (and before stepping to the tune square)
+PT_CAMP_SEA_HP = 0.7       # at the tune square with a sea monster seen in the last PT_CAMP_SEA_TURNS: camp below this
+PT_CAMP_SEA_TURNS = 60
+PT_CAMP_REST_MAX = 200     # rest steps (search 5) per camp stay
+PT_CAMP_STAYS = 8          # camp stays at most
+PT_CAMP_WATER_COST = 8     # path cost of a square beside water (the tune square itself excepted)
+PT_CAMP_MAX_DIST = 15      # the camp must be this close by the known floor (else the old pause)
+# CASTLE_FARM_THEN_ENTER (off pending a harness A/B; castle_tune.py, research/strong_castle.md block 2): the castle's
+# score is banked on arrival, so the crusher (and, from a scare-monster base, the eels: exper.c +1000 xp for a wrapping
+# eel) farms experience until XL >= PT_FARM_XL and max HP >= PT_FARM_HP (HP >= PT_FARM_ENTER_HP), or PT_FARM_TURNS
+# turns / PT_FARM_RAISES raises / PT_FARM_IDLE turns with nothing coming over the lowered bridge -- only then the bridge
+# is left down for the front walk (FRONT_V3 -> towers -> CASTLE_WISH_FIRST -> tele_route).
+CASTLE_FARM_THEN_ENTER = False
+PT_FARM_XL = 11
+PT_FARM_HP = 100
+PT_FARM_ENTER_HP = 0.9
+PT_FARM_TURNS = 6000
+PT_FARM_RAISES = 300
+PT_FARM_IDLE = 600
+PT_FARM_MAX_STEPS = 12000  # lane steps at most while farming (PT_MAX_STEPS otherwise)
+PT_FARM_REST_TURNS = 1500  # rest steps behind the raised bridge at most while farming (PT_REST_TURNS otherwise)
+PT_FARM_EELS = True        # strike a sea monster next to us from the scare-monster base (never from Elbereth)
+PT_FARM_EEL_HP = 0.6       # ...only at this share of HP or more
+PT_FARM_FIGHTS = 600       # fights at most while farming (PT_MAX_FIGHTS otherwise)
+# CASTLE_KIT_PICKUP (off pending a dev A/B; research/strong_castle.md block 3 / phase 2): the whole game keeps one tonal
+# instrument (flute, harp, bugle, tooled/frost/fire horn; an unknown horn) and every known scroll of scare monster
+# ahead of the thrown weapons and food in ItemPriority (weight-limited like the rest), known scare scrolls are never
+# dropped by arrange_items, a scroll that may be scare monster which we dropped is never picked up again unless it was
+# blessed in our pack, and a known-cursed one on the floor is left alone (pickup.c: blessed -> unblessed; uncursed and
+# never picked up -> marked; else it turns to dust). The dive also takes such an item under us or within PT_KIT_DIST
+# steps (no hostile within 7, HP >= 60%, not in a shop, never on the castle or Medusa's level).
+CASTLE_KIT_PICKUP = False
+PT_KIT_DIST = 8
 # CASTLE_PICK_MELEE (castle_cross._swap_for_fight; off pending a lift-suite A/B, research/deep_deaths.md castle section):
 # the castle's floating fights in the west maze (castle_cross._melee_adjacent, cl_route_step and _toward's blockers) wield
 # the 'best' melee weapon once after every dig, and the next dig's apply wields the pick again: two moves per interruption

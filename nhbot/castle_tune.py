@@ -26,6 +26,7 @@ NetHack 3.6.6 (NLE 1.3.0 src/music.c, dbridge.c; research/castle_entry.md):
 """
 
 import collections
+import heapq
 import itertools
 import re
 
@@ -35,6 +36,7 @@ from nle.nethack import actions as A
 
 from . import jf_config
 from . import objects as O
+from . import power
 from .castle_logic import WEST_COURTYARD, map_char, to_bot, to_map
 from .glyph import SS
 from .strategy import Strategy
@@ -46,6 +48,14 @@ TUNE_SPOTS = ((4, 7), (4, 9), (4, 8))   # shore squares with the span in their 3
 BRIDGE_UP = frozenset({SS.S_vcdbridge, SS.S_hcdbridge})
 BRIDGE_DOWN = frozenset({SS.S_vodbridge, SS.S_hodbridge})
 NOTES = 'ABCDEFG'
+# CASTLE_BASECAMP: west-courtyard squares with no water beside them (sea monsters can't leave the moat), nearest the
+# tune squares first; (03,08) touches all three
+CAMP_SQUARES = tuple(sorted(
+    ((x, y) for x in range(0, 5) for y in range(6, 11)
+     if all(map_char(x + dx, y + dy) != '}' for dx in (-1, 0, 1) for dy in (-1, 0, 1))),
+    key=lambda p: (max(abs(p[0] - APPROACH[0]), abs(p[1] - APPROACH[1])), abs(p[1] - APPROACH[1]), -p[0])))
+_DIRS = ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1))
+_MELEE_HIT = re.compile(r'\b(The [\w -]+?|It) (hits|bites|butts|claws|kicks|stings|touches|swings)')
 
 _TONAL_NAMES = ('wooden flute', 'magic flute', 'tooled horn', 'frost horn', 'fire horn', 'wooden harp',
                 'magic harp', 'bugle')
@@ -205,6 +215,11 @@ def bridge_adjacent(p):
     return any(max(abs(p[0] - q[0]), abs(p[1] - q[1])) <= 1 for q in (SPAN, PORTCULLIS))
 
 
+def wet(p):
+    """CASTLE_BASECAMP: map square p is beside the moat (the raised span counts: the moat is under it)."""
+    return any(map_char(p[0] + dx, p[1] + dy) == '}' for dx in (-1, 0, 1) for dy in (-1, 0, 1))
+
+
 def instrument_rank(item):
     """0: a flute, harp or bugle (known or not); 1: a horn known to be tonal; 2: an unknown horn (a horn of plenty
     2 times in 11); None: no use for the tune (drums, horn of plenty, anything else)."""
@@ -245,6 +260,14 @@ class PassTune:
         self.spot = None
         self._bstate = None          # 'up' / 'down' from our own plays' messages
         self._state = None
+        # CASTLE_BASECAMP
+        self.base = None             # (level key, map square) where our scroll of scare monster lies (a tune square)
+        self.base_spent = False      # the base's scroll is gone (burnt, ...): no second base from the same kit
+        self.base_hits = 0           # melee hits taken on the base (it doesn't hold: a minion, a fake)
+        self.camping = False         # resting to PT_CAMP_HP at the camp square (or on the base)
+        self.camp_stays = 0
+        self.camp_done_turn = None
+        self._sea_turn = None        # last turn a sea monster showed
 
     # ---------------------------------------------------------------- helpers
 
@@ -463,6 +486,8 @@ class PassTune:
         """Why the lane must end now, or None."""
         if self._held():
             return 'held by a sea monster'
+        if jf_config.CASTLE_BASECAMP and self._on_base():
+            return None   # on our scroll of scare monster: nothing next to us melees (monmove.c onscary, dochug)
         land = self._land_adjacent()
         if len(land) >= jf_config.PT_MAX_ADJACENT:
             return f'{len(land)} hostiles next to us'
@@ -476,7 +501,7 @@ class PassTune:
     def _step(self):
         agent = self.agent
         self.steps += 1
-        if self.steps > jf_config.PT_MAX_STEPS:
+        if self.steps - self.tries['camp_rest_total'] > self._max_steps():
             return self._abort('step budget')
         pos = self._pos()
         inst = self.instrument()
@@ -484,11 +509,18 @@ class PassTune:
             return self._abort('no instrument')
         if 'start' not in self.logged:
             self._mile('start', f'instrument {inst.text if inst else None!r} bridge {self.bridge()}')
+        camp = jf_config.CASTLE_BASECAMP
+        if camp:
+            self._note_sea()
         why = self._danger()
         if why:
             return self._abort(why)
         hp = self._hp_frac()
-        if hp < jf_config.PT_ABORT_HP:
+        if camp and hp < jf_config.PT_ABORT_HP:
+            r = self._camp_low_hp(pos)
+            if r is not None:
+                return r
+        if hp < jf_config.PT_ABORT_HP and not (camp and self.camping):
             if self.tune is None or self.bridge() != 'down':
                 # nothing to protect: let the survival layers (Elbereth rest, prayer, retreat) have us; back later
                 self.paused += 1
@@ -505,6 +537,10 @@ class PassTune:
             self._set_state('waiting out an impairment')
             agent.search()
             return True
+        if camp:
+            r = self._camp_step(pos)
+            if r is not None:
+                return r
         if not bridge_adjacent(pos):
             return self._go_spot()
         self._mile('spot', f'at {pos}')
@@ -513,13 +549,18 @@ class PassTune:
             if hostiles and not blockers:
                 return self._crush_step()   # the ones on the span first: the raise kills them
         land = self._land_adjacent()
+        if camp and self._on_base():
+            return self._base_step(land, inst)
         ignorers = [m for m in land if self._ignores(m[1])]
         if ignorers:
             return self._attack(ignorers[0])   # (an @ that stepped off the span: Elbereth doesn't stop it)
         if not self._engraved() and self._can_write() and self.tries['elbereth'] < jf_config.PT_ELBERETH_TRIES:
             self.tries['elbereth'] += 1
             self._set_state('Elbereth on the tune square')
-            agent.engrave('Elbereth')
+            if camp:
+                self._write_elbereth()
+            else:
+                agent.engrave('Elbereth')
             return True
         if self._sea_adjacent() and not self._engraved():
             return self._abort('a sea monster next to us and no Elbereth under us')
@@ -538,11 +579,13 @@ class PassTune:
         self.tries['go'] += 1
         if self.tries['go'] > jf_config.PT_GO_BUDGET:
             return self._abort('tune square not reached')
-        if self.spot is None or self._monster_on(self.spot):
+        if jf_config.CASTLE_BASECAMP and self.base is not None:
+            self.spot = self.base[1]   # (nothing stands on a scare monster scroll)
+        elif self.spot is None or self._monster_on(self.spot):
             self.spot = self._choose_spot()
         if self.spot is None:
             return self._abort('no free tune square')
-        path = front._path(pos, self.spot)
+        path = self._dry_path(pos, self.spot) if jf_config.CASTLE_BASECAMP else front._path(pos, self.spot)
         if not path:
             if pos == APPROACH:
                 self.tries['blocked'] += 1
@@ -588,12 +631,15 @@ class PassTune:
         return None if best is None else best[1]
 
     def _attack(self, m):
+        self.tries['fights'] += 1
+        if self.tries['fights'] > self._max_fights():
+            return self._abort('too much fighting on the tune square')
+        return self._fight_at(m)
+
+    def _fight_at(self, m):
         agent = self.agent
         p, mon, _ = m
         y, x = to_bot(*p)
-        self.tries['fights'] += 1
-        if self.tries['fights'] > jf_config.PT_MAX_FIGHTS:
-            return self._abort('too much fighting on the tune square')
         self._set_state(f'fighting {getattr(mon, "mname", "?")} at {p}')
         with agent.atom_operation():
             agent.step(A.Command.FIGHT)
@@ -714,8 +760,12 @@ class PassTune:
         if self.crush_start is None:
             self.crush_start = now
             self._mile('crusher', f'bridge {b}')
-        over = (not jf_config.PT_CRUSH or self.crusher_over or self.cycles >= jf_config.PT_CRUSH_MAX or
-                now - self.crush_start > jf_config.PT_CRUSH_TURNS)
+        farm = jf_config.CASTLE_FARM_THEN_ENTER
+        if farm:
+            over = not jf_config.PT_CRUSH or self._farm_over(now)
+        else:
+            over = (not jf_config.PT_CRUSH or self.crusher_over or self.cycles >= jf_config.PT_CRUSH_MAX or
+                    now - self.crush_start > jf_config.PT_CRUSH_TURNS)
         hp = self._hp_frac()
         if b == 'down':
             hostiles, blockers = self._victims()
@@ -726,29 +776,40 @@ class PassTune:
                 res = self._play_tune()
                 self._log(f'crush {self.cycles}: {res["kind"]} {agent.message[:200]!r}')
                 return True
-            if hp < jf_config.PT_REST_HP and not blockers and self.tries['rest_raise'] < 6:
+            if hp < jf_config.PT_REST_HP and not blockers and \
+                    self.tries['rest_raise'] < (jf_config.PT_FARM_RAISES if farm else 6):
                 self.tries['rest_raise'] += 1
                 self.resting = True
                 self._set_state(f'hurt ({hp:.2f}): raising the bridge to rest')
                 self._play_tune()
                 return True
             if over:
+                if farm and hp < jf_config.PT_FARM_ENTER_HP and not blockers and self.tries['enter_rest'] < 3:
+                    # CASTLE_FARM_THEN_ENTER: walk in at full strength -- raise it, rest, lower it, then in
+                    self.tries['enter_rest'] += 1
+                    self.resting = True
+                    self._set_state(f'farm over at hp {hp:.2f}: raising the bridge to rest before going in')
+                    self._play_tune()
+                    return True
                 return self._handoff()
             if self.down_since is None:
                 self.down_since = now
-            if now - self.down_since > jf_config.PT_CRUSH_WAIT:
+            if now - self.down_since > (jf_config.PT_FARM_IDLE if farm else jf_config.PT_CRUSH_WAIT):
                 self.crusher_over = True
                 self._log(f'crusher over: nothing came for {now - self.down_since} turns ({self.cycles} raises)')
+                if farm:
+                    return True   # (the next step rests first if hurt, then hands over)
                 return self._handoff()
             self._set_state('bridge down: waiting for the castle to come out')
             agent.search()
             return True
         # the bridge is up
         if self.resting or hp < jf_config.PT_REST_HP:
-            self.resting = hp < jf_config.PT_RESUME_HP
+            resume = jf_config.PT_FARM_ENTER_HP if farm and over else jf_config.PT_RESUME_HP
+            self.resting = hp < resume
             if self.resting:
                 self.tries['rest'] += 1
-                if self.tries['rest'] > jf_config.PT_REST_TURNS:
+                if self.tries['rest'] > (jf_config.PT_FARM_REST_TURNS if farm else jf_config.PT_REST_TURNS):
                     return self._abort('rested too long')
                 self._set_state('resting behind the raised bridge')
                 agent.search(3)
@@ -759,6 +820,362 @@ class PassTune:
             self.down_since = now
             self._mile('lowered')
         return True
+
+    # ---- CASTLE_FARM_THEN_ENTER
+
+    def _max_steps(self):
+        return jf_config.PT_FARM_MAX_STEPS if jf_config.CASTLE_FARM_THEN_ENTER else jf_config.PT_MAX_STEPS
+
+    def _max_fights(self):
+        return jf_config.PT_FARM_FIGHTS if jf_config.CASTLE_FARM_THEN_ENTER else jf_config.PT_MAX_FIGHTS
+
+    def _farm_over(self, now):
+        """The farm's end: strong enough (XL >= PT_FARM_XL and max HP >= PT_FARM_HP), or its budgets (turns, raises),
+        or nothing came over the lowered bridge for PT_FARM_IDLE turns (crusher_over). Sticky."""
+        if self.crusher_over:
+            return True
+        bl = self.agent.blstats
+        xl = int(getattr(bl, 'experience_level', 0))
+        if xl >= jf_config.PT_FARM_XL and int(bl.max_hitpoints) >= jf_config.PT_FARM_HP:
+            why = f'strong: XL {xl}, max HP {int(bl.max_hitpoints)}'
+        elif now - self.crush_start > jf_config.PT_FARM_TURNS:
+            why = f'turn budget ({now - self.crush_start} turns)'
+        elif self.cycles >= jf_config.PT_FARM_RAISES:
+            why = f'raise budget ({self.cycles})'
+        else:
+            return False
+        self.crusher_over = True
+        self._mile('farm_over', f'{why}, {self.cycles} raises, XL {xl}')
+        return True
+
+    # ---- CASTLE_BASECAMP
+
+    def _note_sea(self):
+        if any(self._is_sea(m[0]) for m in self._monsters()) or self._held():
+            self._sea_turn = self.agent.blstats.time
+
+    def _sea_recent(self):
+        return self._sea_turn is not None and \
+            self.agent.blstats.time - self._sea_turn <= jf_config.PT_CAMP_SEA_TURNS
+
+    def _known_scare(self):
+        known, _ = power.scare_scrolls(self.agent)
+        return known[0] if known else None
+
+    def _on_base(self):
+        """Standing on our scroll of scare monster (and it still lies there)."""
+        if self.base is None:
+            return False
+        agent = self.agent
+        key, p = self.base
+        if agent.current_level().key() != key or self._pos() != p:
+            return False
+        turn = agent.blstats.time
+        if getattr(self, '_base_hit_turn', None) != turn and _MELEE_HIT.search(agent.message or '') and \
+                self._land_adjacent() + self._sea_adjacent():
+            self._base_hit_turn = turn
+            self.base_hits += 1   # a scared monster doesn't melee (dochug !scared): a minion, an Angel, a fake pile
+            if self.base_hits >= 3:
+                self._log(f'the base at {p} does not hold: {agent.message[:120]!r}')
+                self.base = None
+                self.base_spent = True
+                return False
+        below = agent.inventory.items_below_me
+        if not below:
+            return True   # (not parsed yet right after the drop)
+        if any(power.is_scare_candidate(i) for i in below):
+            return True
+        self._log(f'the scare monster scroll is gone from the base {p}: below {[i.text for i in below][:4]}')
+        self.base = None
+        self.base_spent = True
+        return False
+
+    def _maybe_base(self, pos):
+        """On a tune square with a known scroll of scare monster and no base yet: drop it here (True)."""
+        if self.base is not None or self.base_spent or pos not in TUNE_SPOTS:
+            return False
+        scroll = self._known_scare()
+        if scroll is None:
+            return False
+        return self._make_base(scroll, pos)
+
+    def _make_base(self, scroll, pos):
+        """Drop one known scroll of scare monster on this tune square and hold it as the base. The dive's CASTLE_SCARE
+        hold (dive_logic.on_scare_scroll / gehennom_scare) knows the spot too: it holds us here while the lane pauses."""
+        agent = self.agent
+        bl = agent.blstats
+        key = agent.current_level().key()
+        here = (int(bl.y), int(bl.x))
+        self.base = (key, pos)
+        dive = self.dive
+        dive._scare_spot = (key, here)
+        dive._scare_drop_turn = bl.time
+        dive._scare_dropped_keys = {agent.inventory._scroll_key(scroll)}
+        self._mile('base', f'{scroll.text!r} dropped at {pos}')
+        agent.inventory.drop([scroll], [1])
+        # never picked up again (pickup.c: a second pickup turns it to dust)
+        agent.inventory._note_dropped([scroll], [1], force=True)
+        return True
+
+    def _base_step(self, land, inst):
+        """On the base: strike what stands next to us (scared: it doesn't strike back) -- never with an Elbereth under
+        the scroll (mon.c setmangry: 'You feel like a hypocrite', -5 alignment) -- the eels only while farming, then
+        the tune / the crusher. The dust Elbereth step and the sea/minotaur aborts don't apply here."""
+        hp = self._hp_frac()
+        may_hit = not self._engraved()
+        land = [m for m in land if not self._peaceful(m[0])]
+        if may_hit and land and hp >= 0.3:
+            ign = [m for m in land if self._ignores(m[1])]
+            return self._attack((ign or land)[0])
+        if may_hit and jf_config.CASTLE_FARM_THEN_ENTER and jf_config.PT_FARM_EELS and \
+                hp >= jf_config.PT_FARM_EEL_HP and self.tries['eel_fights'] < jf_config.PT_FARM_FIGHTS:
+            sea = [m for m in self._sea_adjacent() if not self._peaceful(m[0])]
+            if sea:
+                self.tries['eel_fights'] += 1
+                return self._fight_at(sea[0])
+        if self.tune is None:
+            return self._solve_step(inst)
+        return self._crush_step()
+
+    def _peaceful(self, p):
+        y, x = to_bot(*p)
+        return bool(self.agent.monster_tracker.peaceful_monster_mask[y, x])
+
+    def _camp_threshold(self, pos, on_base):
+        now = self.agent.blstats.time
+        if on_base:
+            return jf_config.PT_ABORT_HP
+        if not bridge_adjacent(pos):
+            if self.camp_done_turn is not None and now - self.camp_done_turn < 50:
+                return jf_config.PT_ABORT_HP   # just rested: no flip-flop on the two steps to the tune square
+            return jf_config.PT_CAMP_HP        # rest to high HP before stepping to the moat's edge
+        if self._sea_recent() and (self.tune is None or self.bridge() != 'down'):
+            return jf_config.PT_CAMP_SEA_HP
+        return jf_config.PT_ABORT_HP
+
+    def _camp_target(self, pos):
+        """(square, path) to rest on: the base (our scare monster scroll) if we have one, else the nearest camp
+        square with no water beside it, reachable within PT_CAMP_MAX_DIST by the known floor; None if none."""
+        if self.base is not None:
+            if self.agent.current_level().key() != self.base[0]:
+                return None
+            cands = [self.base[1]]
+        else:
+            front = self._front()
+            cands = [p for p in CAMP_SQUARES if not self._monster_on(p) and not front._boulder(p)]
+        prev = None
+        for p in cands:
+            if p == pos:
+                return p, []
+            if prev is None:
+                prev = self._dry_tree(pos, None if self.base is None else p)
+            path = self._unwind(prev, pos, p)
+            if path and len(path) <= jf_config.PT_CAMP_MAX_DIST:
+                return p, path
+        return None
+
+    def _camp_start(self, pos, why):
+        if self.camp_stays >= jf_config.PT_CAMP_STAYS:
+            return False
+        if not self._on_base() and self._land_adjacent():
+            return False   # a fight next to us: the survival layers (the old pause)
+        if self._camp_target(pos) is None:
+            return False
+        self.camping = True
+        self.camp_stays += 1
+        self.tries['camp_rest'] = 0
+        self._log(f'camp {self.camp_stays}: {why} (hp {self._hp_frac():.2f}, pos {pos}, base {self.base})')
+        return True
+
+    def _camp_low_hp(self, pos):
+        """Below PT_ABORT_HP: rest on the base / at the camp instead of the old pause when we can."""
+        if self._maybe_base(pos):
+            return True
+        if self.camping or self._camp_start(pos, 'low HP'):
+            return self._camp_act(pos)
+        return None
+
+    def _camp_step(self, pos):
+        """CASTLE_BASECAMP, before the lane's own step: the base (a known scare monster scroll dropped on the first tune
+        square we stand on), the decision to rest, the rest. None: go on with the lane."""
+        if self._maybe_base(pos):
+            return True
+        on_base = self._on_base()
+        if not self.camping and self._hp_frac() < self._camp_threshold(pos, on_base):
+            self._camp_start(pos, 'hurt' if bridge_adjacent(pos) else 'before the tune square')
+        if not self.camping:
+            return None
+        return self._camp_act(pos)
+
+    def _camp_act(self, pos):
+        agent = self.agent
+        hp = self._hp_frac()
+        if hp >= jf_config.PT_CAMP_HP or self.tries['camp_rest'] > jf_config.PT_CAMP_REST_MAX:
+            self.camping = False
+            self.camp_done_turn = agent.blstats.time
+            self._log(f'camp over at hp {hp:.2f} after {self.tries["camp_rest"]} rests')
+            return None
+        if self.tune is not None and self.bridge() == 'down' and bridge_adjacent(pos):
+            hostiles, blockers = self._victims()
+            if not blockers and self.tries['camp_raise'] < 10:
+                self.tries['camp_raise'] += 1
+                self.resting = True
+                self._set_state(f'camp: raising the bridge first (hp {hp:.2f})')
+                self._play_tune()
+                return True
+        if self._on_base():
+            land = [m for m in self._land_adjacent() if not self._peaceful(m[0])]
+            if land and not self._engraved() and hp >= 0.3:
+                return self._attack(land[0])
+            return self._camp_rest(3, 'resting on the scare monster scroll')
+        target = self._camp_target(pos)
+        if target is None:
+            self.camping = False
+            self.camp_done_turn = agent.blstats.time
+            self._log('camp: no camp square in reach')
+            return None
+        p, path = target
+        if path:
+            n = path[0]
+            if self._monster_on(n):
+                for m in self._land_adjacent():
+                    if m[0] == n:
+                        return self._attack(m)
+                return self._camp_rest(1, f'camp: waiting for {n} to clear')
+            self._set_state(f'walking to the camp {p}')
+            y, x = to_bot(*n)
+            agent.direction(agent.calc_direction(agent.blstats.y, agent.blstats.x, y, x))
+            return True
+        land = self._land_adjacent()
+        ignorers = [m for m in land if self._ignores(m[1])]
+        if ignorers:
+            return self._attack(ignorers[0])
+        if not self._engraved() and self._can_write() and self.tries['camp_elbereth'] < jf_config.PT_ELBERETH_TRIES:
+            self.tries['camp_elbereth'] += 1
+            self._set_state(f'Elbereth at the camp {p}')
+            self._write_elbereth()
+            return True
+        if land and not self._engraved():
+            return self._attack(land[0])
+        return self._camp_rest(5, f'resting at the camp {p}')
+
+    def _camp_rest(self, n, state):
+        self.tries['camp_rest'] += 1
+        self.tries['camp_rest_total'] += 1
+        self._set_state(state)
+        self.agent.search(n)
+        return True
+
+    def _fire_wand(self):
+        inv = self.agent.inventory
+        for it in inv.items:
+            if it.category == nh.WAND_CLASS and it.is_unambiguous() and it.object.name == 'fire' and \
+                    not inv.is_known_empty(it) and it.comment != 'EMPT':
+                return it
+        return None
+
+    _WRITE_PROMPT = re.compile(r'What do you want to (burn|write|engrave|scrawl|add)')
+
+    def _burn(self, wand):
+        """Burn Elbereth into the floor with a known wand of fire (engrave.c: type BURN -- permanent, fighting from it
+        doesn't smudge it). True when it reads back as Elbereth."""
+        agent = self.agent
+        letter = agent.inventory.items.get_letter(wand)
+
+        def gen():
+            if 'What do you want to write with?' not in (agent.single_message or ''):
+                yield A.Command.ESC
+                return
+            yield letter
+            for _ in range(12):
+                msg = agent.single_message or ''
+                if 'Do you want to add to the current engraving?' in msg:
+                    yield 'n'
+                    continue
+                if self._WRITE_PROMPT.search(msg):
+                    yield from 'Elbereth'
+                    yield '\r'
+                    break
+                if agent._observation['misc'][2]:
+                    yield ' '
+                    continue
+                return
+            for _ in range(6):
+                if not agent._observation['misc'][2]:
+                    break
+                yield ' '
+
+        with agent.atom_operation():
+            agent.step(A.Command.ENGRAVE, gen())
+            agent.inventory.get_items_below_me()
+        ok = self._engraved()
+        self._log(f'burn Elbereth with {wand.text!r}: {"ok" if ok else "failed"} {agent.message[:120]!r}')
+        return ok
+
+    def _write_elbereth(self):
+        """A burned Elbereth (a known wand of fire), else a durable one (DURABLE_ELBERETH's blade), else dust."""
+        agent = self.agent
+        wand = self._fire_wand()
+        if wand is not None and self.tries['burn'] < 2:
+            self.tries['burn'] += 1
+            if self._burn(wand):
+                return True
+        if jf_config.DURABLE_ELBERETH and self.tries['durable'] < 2:
+            tool = agent.durable_engrave_tool()
+            if tool is not None:
+                self.tries['durable'] += 1
+                if agent.engrave_durable(tool):
+                    return True
+        return agent.engrave('Elbereth')
+
+    def _dry_path(self, start, target):
+        """front._path's walk, keeping off squares beside water where it can (each costs PT_CAMP_WATER_COST more;
+        the target itself is free): sea monsters reach only those."""
+        prev = self._dry_tree(start, target)
+        return self._unwind(prev, start, target)
+
+    def _dry_tree(self, start, target):
+        """Dijkstra from start (stops at target when given; else the whole known floor): {square: previous}."""
+        front = self._front()
+        cost = {start: 0}
+        prev = {start: None}
+        heap = [(0, 0, start)]
+        k = 0
+        while heap:
+            c, _, p = heapq.heappop(heap)
+            if p == target:
+                break
+            if c > cost[p]:
+                continue
+            for dx, dy in _DIRS:
+                n = (p[0] + dx, p[1] + dy)
+                if not (-8 <= n[0] <= 70 and -3 <= n[1] <= 17):
+                    continue
+                if n != target and (not front._walkable(n) or front._boulder(n)):
+                    continue
+                if n == target and front._boulder(n):
+                    continue
+                if dx and dy and (front._door(p) or front._door(n) or
+                                  (not front._walkable((p[0] + dx, p[1])) and not front._walkable((p[0], p[1] + dy)))):
+                    continue
+                nc = c + 1 + (jf_config.PT_CAMP_WATER_COST if n != target and wet(n) else 0)
+                if nc < cost.get(n, 1 << 30):
+                    cost[n] = nc
+                    prev[n] = p
+                    k += 1
+                    heapq.heappush(heap, (nc, k, n))
+        return prev
+
+    @staticmethod
+    def _unwind(prev, start, target):
+        if target not in prev:
+            return None
+        path = []
+        p = target
+        while p != start:
+            path.append(p)
+            p = prev[p]
+        return path[::-1]
 
     def _handoff(self):
         if self.bridge() != 'down':

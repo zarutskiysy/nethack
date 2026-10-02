@@ -79,3 +79,15 @@
   chest step uses a key first. Always on (bug fix): a wand taken from the chest is named (zapped) before the HP and
   budget checks, which used to end the detour with it unnamed, out of WISH_TELEPORT_ROUTE's reach.
   `tests/test_castle_wish.py` (fakes): `python tests/test_castle_wish.py`.
+- **strong-castle (CASTLE_BASECAMP / CASTLE_FARM_THEN_ENTER / CASTLE_KIT_PICKUP, all off; `nhbot/castle_tune.py`,
+  workspace `research/strong_castle.md`):** on top of CASTLE_PASSTUNE. BASECAMP: a known scroll of scare monster is
+  dropped on the first tune square we stand on (onscary: minotaurs, @ and eels too) -- rest there instead of pausing,
+  strike from it (never with an Elbereth under it), no minotaur/crowd/sea aborts on it, never picked up again; without
+  one, a camp on a west-courtyard square with no water beside it ((03,08) first) with a burned (wand of fire) /
+  durable / dust Elbereth, rested to PT_CAMP_HP before every walk to the tune square, when hurt after a sea monster
+  showed, and instead of the low-HP pause; walks keep off squares beside water. FARM_THEN_ENTER: the crusher (and eels
+  from the base) runs until XL >= PT_FARM_XL and max HP >= PT_FARM_HP or its budgets, rests to PT_FARM_ENTER_HP, then
+  hands over to the front walk. KIT_PICKUP: one tonal instrument and every known scare monster scroll kept ahead of
+  thrown weapons/food, known scare scrolls never dropped, dropped ones never re-picked (blessed ones may come back
+  once: pickup.c), known-cursed floor ones left alone, and the dive takes such an item under it or within PT_KIT_DIST.
+  Tests (fakes): `python tests/test_castle_basecamp.py`, `python tests/test_castle_kit.py`.
