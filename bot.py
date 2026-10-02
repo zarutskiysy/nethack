@@ -17,6 +17,7 @@ import roles  # noqa: E402
 # Human Priests left PetrAnokhin's pf_pa for nhbot (eL1fe's spell bundle casts their healing): +0.053 +- 0.022 per game
 # over 113 paired held-out games (ph0/ph1), in line with the hub's private seeds (dag25 0.260 vs pf_pa 0.228).
 SPECIALISTS = {
+    "tou": "adapter_pf_dtad7a",
     "hea-gno": "adapter_pf_hg",
     "hea-hum": "adapter_pf_hh",
     "sam": "adapter_pf_v35",
@@ -55,6 +56,13 @@ class Bot:
             ident = roles.identity(initial_observation)
         except Exception:  # noqa: BLE001
             pass
+        # a role-only identity means the welcome line was not seen: ask ^X before choosing the engine
+        self._probe = 0 if ident is None or ident.count("-") != 3 else None
+        self._probe_ident = ident
+        if self._probe is None:
+            self._start(initial_observation, ident)
+
+    def _start(self, initial_observation, ident):
         module_name = _specialist(ident) or "adapter"
         if module_name == "adapter":
             try:
@@ -65,6 +73,22 @@ class Bot:
         self._driver.reset(initial_observation)
 
     def act(self, observation):
+        if self._probe is not None:
+            import nle.nethack as nh
+            from nle.nethack import actions as A
+            actions = tuple(nh.ACTIONS)
+            if self._probe == 0:
+                self._probe = 1
+                return actions.index(A.Command.ATTRIBUTES)
+            if self._probe == 1:
+                try:
+                    self._probe_ident = roles.attributes_identity(observation) or self._probe_ident
+                except Exception:  # noqa: BLE001
+                    pass
+                self._probe = 2
+                return actions.index(A.Command.ESC)
+            self._probe = None
+            self._start(observation, self._probe_ident)
         return self._driver.act(observation)
 
     def close(self):

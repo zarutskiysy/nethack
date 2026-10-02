@@ -1,10 +1,17 @@
 {
   "schema": "nethackers.solution/v1",
-  "name": "zarutskiysy-nhbot",
+  "name": "zarutskiysy-v5",
   "root": ".",
   "parents": [
+    "github.com/zarutskiysy/nethack@bb7def3548dcb618066c2c92b8bc3335631aaee1",
+    "github.com/daglar-dragomirov/nethacker@6c814836b3b36d63e2055de88d9549b9908062ef",
+    "github.com/zarutskiysy/nethack@71335bf6953b5fd3b792b5d7677ece3da5e6ae8a",
+    "github.com/daglar-dragomirov/nethacker@008bd0b076f94416867d96d147b715aeafe4c680",
+    "github.com/daglar-dragomirov/nethacker@8aa7d764d47fbb48779222922232b8e13a9ec71a",
+    "github.com/daglar-dragomirov/nethacker@12f2665be415eaa3a40176e334c26668ca2af51b",
     "github.com/daglar-dragomirov/nethacker@e29eb8281b13784716d9121e4f01ec60c2bb2165",
-    "github.com/daglar-dragomirov/nethacker@d8da1f72c197a54ac66d69466eee32f7bc4e72d9"
+    "github.com/daglar-dragomirov/nethacker@d8da1f72c197a54ac66d69466eee32f7bc4e72d9",
+    "github.com/DT6A/nethacker@ad7a864d9385f84c9b4f9865bb68141c90ca5e1b"
   ],
   "influences": [
     "github.com/CleverShovel/nethacker@0d1fb22498024cdcac06be9d15d0f70e8cae803c",
@@ -24,7 +31,6 @@
     "github.com/daglar-dragomirov/nethacker@8ce023a8f681e7366d5f54ca419f314ac874ac59",
     "github.com/daglar-dragomirov/nethacker@c131c7c377fc36b84b2c969aee4b40ff9ec6e653",
     "github.com/daglar-dragomirov/nethacker@cb527267cc6e3562ea8e02ccc09c90ff17fe8ccf",
-    "github.com/daglar-dragomirov/nethacker@e29eb8281b13784716d9121e4f01ec60c2bb2165",
     "github.com/daglar-dragomirov/nethacker@fc50360e721e98e5a322dbd6282c703718bd4d46",
     "github.com/eL1fe/nethacker@012dce4eef00fb92e814e2aa5a405c1eed015e96",
     "github.com/eL1fe/nethacker@1b85fe386f181bd64598769a12401e8cf9b04c03",
@@ -35,6 +41,7 @@
     "github.com/kefirski/nethacker@44e1e586cf4c6707b72b8d5238cb34311b615a01",
     "github.com/kefirski/nethacker@5b7f1ebb452945da5d76862ce21d8b1a0053c0f5",
     "github.com/kefirski/nethacker@91cc604d54aec632e67f8f21680319ac7e77a2fd",
+    "github.com/kefirski/nethacker@995d8f40b2d24ee09487b0e87e014ca2fcc10928",
     "github.com/kenforthewin/nethack_astra@38b1a38b340d4cb154fe5e4411b2819dc407d5e3",
     "github.com/vkurenkov/nethacker@21e65391b70273f5c9c7e1b4df614a880da64cf1",
     "github.com/vkurenkov/nethacker@238c254960fae35dbb3c8de7922da7f705875c41",

@@ -14,7 +14,7 @@ import os
 import re
 
 # identity prefix -> {"module.NAME": value}
-OVERRIDES: dict[str, dict[str, object]] = {}
+OVERRIDES: dict[str, dict[str, object]] = {'arc': {'jf_config.ALIGN_PRAYER': False, 'jf_config.LONE_WEAK_THREAT': False, 'jf_config.FEYE_GUARD': False, 'jf_config.SHOP_SAFETY': False, 'jf_config.RING_MODULE': True, 'dive_logic.DIVE_XL': 8, 'dive_logic.MEDUSA_HOP': True}, 'bar': {'jf_config.ALIGN_PRAYER': True, 'jf_config.LONE_WEAK_THREAT': True, 'jf_config.FEYE_GUARD': True, 'jf_config.SHOP_SAFETY': True, 'jf_config.RING_MODULE': False, 'dive_logic.DIVE_XL': 8, 'dive_logic.MEDUSA_HOP': False}, 'cav': {'jf_config.ALIGN_PRAYER': False, 'jf_config.LONE_WEAK_THREAT': False, 'jf_config.FEYE_GUARD': False, 'jf_config.SHOP_SAFETY': False, 'jf_config.RING_MODULE': True, 'dive_logic.DIVE_XL': 8, 'dive_logic.MEDUSA_HOP': True}, 'kni': {'jf_config.ALIGN_PRAYER': True, 'jf_config.LONE_WEAK_THREAT': True, 'jf_config.FEYE_GUARD': True, 'jf_config.SHOP_SAFETY': True, 'jf_config.RING_MODULE': False, 'dive_logic.DIVE_XL': 8, 'dive_logic.MEDUSA_HOP': False}, 'mon': {'jf_config.ALIGN_PRAYER': False, 'jf_config.LONE_WEAK_THREAT': False, 'jf_config.FEYE_GUARD': False, 'jf_config.SHOP_SAFETY': False, 'jf_config.RING_MODULE': True, 'dive_logic.DIVE_XL': 8, 'dive_logic.MEDUSA_HOP': True}, 'pri': {'jf_config.ALIGN_PRAYER': False, 'jf_config.LONE_WEAK_THREAT': False, 'jf_config.FEYE_GUARD': False, 'jf_config.SHOP_SAFETY': False, 'jf_config.RING_MODULE': True, 'dive_logic.DIVE_XL': 8, 'dive_logic.MEDUSA_HOP': True}, 'ran': {'jf_config.ALIGN_PRAYER': False, 'jf_config.LONE_WEAK_THREAT': False, 'jf_config.FEYE_GUARD': False, 'jf_config.SHOP_SAFETY': False, 'jf_config.RING_MODULE': False, 'dive_logic.DIVE_XL': 7, 'dive_logic.MEDUSA_HOP': False}, 'rog': {'jf_config.ALIGN_PRAYER': True, 'jf_config.LONE_WEAK_THREAT': True, 'jf_config.FEYE_GUARD': True, 'jf_config.SHOP_SAFETY': True, 'jf_config.RING_MODULE': False, 'dive_logic.DIVE_XL': 8, 'dive_logic.MEDUSA_HOP': False}, 'tou': {'jf_config.ALIGN_PRAYER': True, 'jf_config.LONE_WEAK_THREAT': True, 'jf_config.FEYE_GUARD': True, 'jf_config.SHOP_SAFETY': True, 'jf_config.RING_MODULE': False, 'dive_logic.DIVE_XL': 8, 'dive_logic.MEDUSA_HOP': False}, 'val': {'jf_config.ALIGN_PRAYER': True, 'jf_config.LONE_WEAK_THREAT': True, 'jf_config.FEYE_GUARD': True, 'jf_config.SHOP_SAFETY': True, 'jf_config.RING_MODULE': False, 'dive_logic.DIVE_XL': 8, 'dive_logic.MEDUSA_HOP': False}, 'wiz': {'jf_config.ALIGN_PRAYER': False, 'jf_config.LONE_WEAK_THREAT': False, 'jf_config.FEYE_GUARD': False, 'jf_config.SHOP_SAFETY': False, 'jf_config.RING_MODULE': True, 'dive_logic.DIVE_XL': 8, 'dive_logic.MEDUSA_HOP': True}}
 
 _ROLES = {"Archeologist": "arc", "Barbarian": "bar", "Caveman": "cav", "Cavewoman": "cav", "Healer": "hea",
           "Knight": "kni", "Monk": "mon", "Priest": "pri", "Priestess": "pri", "Ranger": "ran", "Rogue": "rog",
@@ -31,6 +31,23 @@ _TITLES = {"Digger": "Archeologist", "Plunderer": "Barbarian", "Plunderess": "Ba
            "Troglodyte": "Caveman", "Rhizotomist": "Healer", "Gallant": "Knight", "Candidate": "Monk",
            "Aspirant": "Priest", "Tenderfoot": "Ranger", "Footpad": "Rogue", "Hatamoto": "Samurai",
            "Rambler": "Tourist", "Stripling": "Valkyrie", "Evoker": "Wizard"}
+
+_RE_ATTRIBUTES = re.compile(r"You are an? [^,]+, a level \d+ (?:(male|female) )?(human|elven|dwarven|gnomish|orcish) "
+                            r"(" + "|".join(_ROLES) + r")\.\s+You are (lawful|neutral|chaotic)\b")
+
+
+def attributes_identity(observation) -> str | None:
+    """Identity from the ^X attributes screen (background line + alignment line)."""
+    try:
+        text = bytes(observation["tty_chars"]).decode("latin-1", "replace")
+    except Exception:  # noqa: BLE001
+        return None
+    m = _RE_ATTRIBUTES.search(text)
+    if m is None:
+        return None
+    gender, race, role, align = m.groups()
+    gender = "fem" if gender == "female" or role in _FEMALE_ROLES else "mal"
+    return f"{_ROLES[role]}-{_RACES[race]}-{_ALIGNS[align]}-{gender}"
 
 
 def identity(observation) -> str | None:

@@ -51,3 +51,11 @@
   turned hostile is fought, no Elbereth on altars. Knights stay on the Dlvl-1 grind (the deep grind: -0.020 +- 0.023 over
   160 pairs); a durable (engraved) Elbereth for holds measured +0.000 over 512 pairs (flag off).
 
+- **v5:** merged daglar-dragomirov/nethacker@6c814836 (the generalist-board leader, mean 0.350) into this v4 tree, which
+  was already a strict superset of its engine-code changes (v4's deep-game and Wizard fixes are additive new flags;
+  daglar made no edits to those nhbot files). Adopted from daglar: the populated per-identity `OVERRIDES` in `roles.py`
+  (arc/cav/mon/pri/wiz play aggressive — `RING_MODULE` and `MEDUSA_HOP` on, the four safety flags off, `DIVE_XL` 8;
+  bar/kni/ran/rog/tou/val play safe — the opposite, `ran` `DIVE_XL` 7), the `^X` attributes-screen identity probe
+  (`roles.attributes_identity`, so the per-role config applies even when the welcome line is missed), and the Tourist
+  engine `pf_dtad7a` (DT6A/nethacker@ad7a864) routed for `tou`. The `RING_MODULE`/`MEDUSA_HOP` module code is
+  byte-identical to daglar's, so this reproduces the leader's behaviour exactly, with v4's extra fixes on top.
