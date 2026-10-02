@@ -13,6 +13,7 @@ from . import castle_power
 from . import castle_cross
 from . import castle_treasury
 from . import castle_front
+from . import castle_tune
 from . import castle_landing
 from . import mino_guard
 from . import known_items
@@ -1132,6 +1133,12 @@ class GlobalLogic:
             # the retreat, which would pull us off the hold square
             .preempt(self.agent, [
                 castle_front.strategy(self.dive),
+            ])
+            # passtune (CASTLE_PASSTUNE, castle_tune.py): a tonal instrument on the castle's west side -> learn the
+            # drawbridge tune by Mastermind from a shore square beside the span, crush what comes onto the bridge, leave
+            # it down for the front door's walk in -- above the front door and the rush (a lift put on at once)
+            .preempt(self.agent, [
+                castle_tune.strategy(self.dive),
             ])
             # valley-exit (LANDING_GUARD, castle_landing.py): a minotaur (or another big Elbereth-ignorer) at the castle
             # depth -- heal early, strike it frozen, zap the best known wand at it (beams, cold; other rays only with

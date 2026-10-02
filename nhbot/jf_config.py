@@ -1337,6 +1337,34 @@ CASTLE_TREASURY = True
 # Then the wand is zapped (the wish: WISH_TELEPORT_ROUTE's) and tele_route takes over: TC ring + cursed teleport scrolls
 # read on the castle -> Valley -> Dlvl ~45-50 (0.79-0.81) instead of the trap door's Valley (0.69).
 CASTLE_WISH_FIRST = False
+# CASTLE_PASSTUNE (off pending a harness A/B; castle_tune.py, research/castle_entry.md (c)): on the castle's west side
+# with a tonal instrument (flute, harp, bugle, tooled/frost/fire horn; an unknown horn last -- a horn of plenty plays
+# no tune) we stand on a shore square with the drawbridge span in our 3x3 ((04,07)/(04,09)/(04,08)), write Elbereth
+# (the eels beside it respect it) and play 5-note tunes ('Improvise?' n, music.c: no instrument effect, no ray) chosen by
+# a deterministic Mastermind solver on the 'N tumblers click and M gears turn' hints (~5.2 plays, at most ~8). The
+# right tune lowers the bridge; then a bounded crusher (raise it on whatever hostile stands on the span or in the
+# portcullis: crushed or drowned, the kill is ours; lower it again) and the bridge left down for the front door's walk
+# in (castle_front FRONT_V3 path even with FRONT_DOOR/FRONT_V3 off -- the walk, the hold, the towers' chest; pairs with
+# CASTLE_WISH_FIRST). Ends for good (the old castle behaviour) when held by a sea monster, PT_MAX_ADJACENT hostiles or
+# a minotaur or 2 Elbereth-ignorers next to us, a sea monster beside us with no Elbereth possible, deaf, contradicting
+# hints or the budgets; below PT_ABORT_HP it pauses for the survival layers (raises the bridge and stops if it is down).
+CASTLE_PASSTUNE = False
+PT_ABORT_HP = 0.35         # below this share of HP: pause (bridge up) / raise it and stop (bridge down)
+PT_RESUME_HP = 0.8         # a pause / a rest behind the raised bridge lasts until this share of HP
+PT_MAX_PAUSES = 3
+PT_REST_HP = 0.6           # in the crusher: below this, raise the bridge and rest behind it
+PT_REST_TURNS = 150        # rest steps (3 turns each) at most
+PT_MAX_ADJACENT = 3        # hostiles next to us on land (span/portcullis excepted while the crusher has them)
+PT_MAX_PLAYS = 12          # tune-search plays at most (the solver needs <= 8)
+PT_MAX_STEPS = 900         # lane steps at most
+PT_GO_BUDGET = 400         # steps to reach a tune square
+PT_ELBERETH_TRIES = 12
+PT_IMPAIRED_WAIT = 60      # steps waiting out confusion / stun / hallucination / blindness (they force improvising)
+PT_MAX_FIGHTS = 60
+PT_CRUSH = True            # the crusher loop (False: lower the bridge and hand over at once)
+PT_CRUSH_MAX = 20          # raises at most
+PT_CRUSH_TURNS = 400       # turns of crusher at most
+PT_CRUSH_WAIT = 20         # turns the lowered bridge waits for a victim before the hand-over
 # CASTLE_PICK_MELEE (castle_cross._swap_for_fight; off pending a lift-suite A/B, research/deep_deaths.md castle section):
 # the castle's floating fights in the west maze (castle_cross._melee_adjacent, cl_route_step and _toward's blockers) wield
 # the 'best' melee weapon once after every dig, and the next dig's apply wields the pick again: two moves per interruption

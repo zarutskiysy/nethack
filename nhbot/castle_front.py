@@ -154,7 +154,7 @@ class FrontDoor:
         return self.agent.glyphs[y, x] in G.BOULDER or level.objects[y, x] in G.BOULDER
 
     def _walkable(self, p):
-        if jf_config.FRONT_V3 and p in (SPAN, PORTCULLIS) and self._open() and self._span_dry():
+        if self._v3() and p in (SPAN, PORTCULLIS) and self._open() and self._span_dry():
             return True   # the bot's map may still hold the moat/wall there (fs3c-k3 s0: '(6, 8) unreachable')
         y, x = to_bot(*p)
         level = self.agent.current_level()
@@ -164,6 +164,17 @@ class FrontDoor:
 
     def _monster_at(self, p):
         return self.dive.castle._monster_at(*p)
+
+    def _tune_open(self):
+        """CASTLE_PASSTUNE (castle_tune.py): the passtune lane lowered the bridge and handed the castle over to us."""
+        if not jf_config.CASTLE_PASSTUNE:
+            return False
+        tune = getattr(self.dive, 'tune', None)
+        return tune is not None and tune.handed_off
+
+    def _v3(self):
+        """The front-strong lane's behaviour: FRONT_V3, or a passtune hand-over (its walk, hold and tower code)."""
+        return jf_config.FRONT_V3 or self._tune_open()
 
     def on_castle(self):
         c = self.dive.castle
@@ -189,7 +200,7 @@ class FrontDoor:
         return self._sym(PORTCULLIS) == SS.S_ndoor or self._sym(SPAN) in (SS.S_vodbridge, SS.S_hodbridge)
 
     def _span_dry(self):
-        if jf_config.FRONT_V3 and getattr(self, 'span_filled', False):
+        if self._v3() and getattr(self, 'span_filled', False):
             return True   # 'Now you can cross it!' from a push onto the span (a monster standing on it hides the floor)
         return self._sym(SPAN) in DRY_SYMS or self._glyph(SPAN) in DRY_SYMS
 
@@ -197,7 +208,7 @@ class FrontDoor:
         bl = self.agent.blstats
         return [m for m in self.agent.get_visible_monsters()
                 if max(abs(m[1] - bl.y), abs(m[2] - bl.x)) == 1 and
-                not (jf_config.FRONT_V3 and nh.glyph_is_pet(int(m[4])))]
+                not (self._v3() and nh.glyph_is_pet(int(m[4])))]
         # (FRONT_V3: a monster our scroll of taming tamed is no target -- fs7-k6 s8 killed its tame minotaur,
         # -15 alignment, and Excalibur's blast killed us)
 
@@ -215,9 +226,10 @@ class FrontDoor:
 
     def active(self):
         """Cheap test: on the castle's west side with the lift plan given up (or none), a way to open the front."""
-        if not jf_config.FRONT_DOOR or self.done or not self.on_castle():
+        tune = self._tune_open()
+        if not (jf_config.FRONT_DOOR or tune) or self.done or not self.on_castle():
             return False
-        if self.dive.castle.active():
+        if self.dive.castle.active() and not tune:
             return False   # the passage plan (a lift, cold, a wish) goes first
         agent = self.agent
         if agent.character.prop.polymorph:
@@ -247,7 +259,7 @@ class FrontDoor:
     # ------------------------------------------------------------------ the plan
 
     def _step(self):
-        if jf_config.FRONT_V3:
+        if self._v3():
             return self._step_v3()
         agent = self.agent
         pos = self._pos()
@@ -407,7 +419,7 @@ class FrontDoor:
         if self._pos() != ZAP_SPOT:
             return self._go(ZAP_SPOT, 'to the zap square')
         name = opener.object.name
-        if jf_config.FRONT_V3 and self.tries['pet_in_line'] < 20:
+        if self._v3() and self.tries['pet_in_line'] < 20:
             # a pet in the bolt's way (fs8-k6 s8: the minotaur our scroll of taming had just tamed): wait -- killing
             # it costs 15 alignment, and with the record below 0 Excalibur blasts its wielder
             for x in range(ZAP_SPOT[0] + 1, PORTCULLIS[0] + 1):
@@ -478,7 +490,7 @@ class FrontDoor:
     def _attack(self, m):
         agent = self.agent
         _, y, x, mon, _ = m
-        if jf_config.FRONT_V3 and self._engraved() and not self.dive._melee_ignores_elbereth(mon):
+        if self._v3() and self._engraved() and not self.dive._melee_ignores_elbereth(mon):
             # mon.c setmangry(): a blow at a monster that respects Elbereth, struck from an Elbereth square, costs 5
             # alignment ('You feel like a hypocrite.' -- prayers fail below 0) and deletes the engraving anyway:
             # write over it first
@@ -589,7 +601,7 @@ class FrontDoor:
         path = self._path(here, p)
         if not path:
             self.tries[('unreachable', p)] += 1
-            if jf_config.FRONT_V3 and self.tries[('unreachable', p)] in (1, 10):
+            if self._v3() and self.tries[('unreachable', p)] in (1, 10):
                 rows = []
                 for yy in range(max(-3, min(here[1], p[1]) - 2), min(17, max(here[1], p[1]) + 3)):
                     row = ''
@@ -602,14 +614,14 @@ class FrontDoor:
             if self.tries[('unreachable', p)] > 20:
                 self._stop(f'{p} unreachable')
                 return False
-            if jf_config.FRONT_V3 and self._push_toward(p):
+            if self._v3() and self._push_toward(p):
                 return True
             if p[0] <= 4:
                 return self.dive.castle._approach(p)   # explores (or digs) the west maze to the courtyard
             return self._fight_or_wait()
         n = path[0]
         if self._monster_at(n):
-            if jf_config.FRONT_V3:
+            if self._v3():
                 return self._attack_at(n)   # the blocker itself (v2 hit whatever stood on the span)
             return self._fight_or_wait()
         y, x = to_bot(*n)

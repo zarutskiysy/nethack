@@ -982,6 +982,8 @@ class DiveLogic:
         self.castle = CastlePassage(self)  # castle_logic.py (jf_config.CASTLE_PASSAGE)
         from .castle_front import FrontDoor
         self.front = FrontDoor(self)       # castle_front.py (jf_config.FRONT_DOOR)
+        from .castle_tune import PassTune
+        self.tune = PassTune(self)         # castle_tune.py (jf_config.CASTLE_PASSTUNE)
         self._dwarf_seen = (None, [])      # (level key, [(y, x)]) of dwarf glyphs at the last update
         self._diggers = {}                 # level key -> {(y, x): turn} where a dwarf was seen digging
         self._crash_turn = {}              # level key -> last turn 'You hear crashing rock.'
