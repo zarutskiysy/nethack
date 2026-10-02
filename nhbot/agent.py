@@ -2195,35 +2195,11 @@ class Agent:
     _DURABLE_PROMPT = re.compile(r'What do you want to (engrave|add to the engraving)')
 
     def durable_engrave_tool(self):
-        """DURABLE_ELBERETH: the item to engrave a lasting Elbereth with, or None: an athame (not known cursed: one
-        piece, no dulling), else an unwielded blade (dagger to saber skill, not a mattock) known to be +0 or better,
-        or of unknown enchantment but known not cursed (mkobj.c: a random weapon's negative enchantment comes with a
-        curse). Daggers and knives first, then the lowest enchantment."""
-        best = None
+        """DURABLE_ELBERETH / ENGRAVE_DURABLE: the item to engrave a lasting Elbereth with, or None (the selection
+        lives in inventory.engrave_tool_candidate, shared with the ENGRAVE_DURABLE pickup keep). Excludes letters a
+        past engraving already dulled (_durable_bad_letters)."""
         bad = getattr(self, '_durable_bad_letters', set())
-        for item in self.inventory.items:
-            if item.equipped or not item.is_unambiguous() or not isinstance(item.objs[0], O.Weapon):
-                continue
-            if self.inventory.items.get_letter(item) in bad:
-                continue
-            if item.count > 1 or item.at_ready or 'alternate weapon' in (item.text or ''):
-                continue   # engrave.c dulls the whole stack it writes with; missiles and the swap weapon stay sharp
-            obj = item.object
-            sub = getattr(obj, 'sub', None)
-            if sub is None or not (O.P_DAGGER <= sub <= O.P_SABER) or sub == O.P_PICK_AXE:
-                continue
-            athame = obj == O.from_name('athame') and item.status != Item.CURSED
-            if not athame:
-                if item.modifier is not None:
-                    if item.modifier < 0:
-                        continue
-                elif item.status not in (Item.UNCURSED, Item.BLESSED):
-                    continue
-            key = (0 if athame else 1, 0 if sub in (O.P_DAGGER, O.P_KNIFE) else 1,
-                   item.modifier if item.modifier is not None else 0)
-            if best is None or key < best[0]:
-                best = (key, item)
-        return None if best is None else best[1]
+        return self.inventory.engrave_tool_candidate(self.inventory.items, bad_letters=bad)
 
     def _engrave_piece(self, letter, text, add):
         """One engraving with the item at `letter`: 'ok', 'dust' (it only writes in the dust), 'dull' or 'fail'."""

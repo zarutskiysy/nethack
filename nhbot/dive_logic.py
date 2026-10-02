@@ -953,6 +953,8 @@ class DiveLogic:
         self._repoly_zaps = 0              # VALLEY_XORN: xorn_repoly's self-zaps
         self._valley_resting = False       # resting in the Valley until VALLEY_REST_UNTIL
         self._scare_spot = None            # (level key, (y, x)) where we dropped a scroll of scare monster
+        self._carpet_spot = None           # SCARE_CARPET: (level key, (y, x)) of the scroll dropped for the dive carpet
+        self._dig_here_forced = None       # SCARE_CARPET: (y, x) try_dig_down must dig at (open the hole on the scroll)
         self._scare_drop_turn = None       # turn of that drop (CASTLE_SCARE hold cap)
         self._not_scare_keys = set()       # scroll appearances a fake pile proved not to be scare monster
         self._scare_drops = 0
@@ -2420,7 +2422,7 @@ class DiveLogic:
         yield True
         if near:
             self._guard_hold_until = bl.time + 20
-        if jf_config.DURABLE_ELBERETH:
+        if self._durable_on:
             target = self._durable_target()
             if target is not None:
                 # this level's engraved Elbereth is a few steps away: hold there (it doesn't smudge while we faint)
@@ -2453,9 +2455,54 @@ class DiveLogic:
         # the faint-length hunger estimate (dive.update), ~30 nutrition too low at XL 7 (grind-food)
         agent.search(1 if near or fainting else 3)
 
+    @property
+    def _durable_on(self):
+        """A per-level engraved Elbereth is in play: either DURABLE_ELBERETH (reactive, engraved inside the faint hold)
+        or ENGRAVE_DURABLE (proactive, engraved on safe arrival). Both fill _durable_sq and share the walk-back-to-it
+        hold (_durable_target) and the step-off instead of a dust wipe (_step_off_durable); only the reactive engraving
+        itself stays gated on DURABLE_ELBERETH."""
+        return jf_config.DURABLE_ELBERETH or jf_config.ENGRAVE_DURABLE
+
+    @Strategy.wrap
+    def engrave_durable_arrival(self):
+        """ENGRAVE_DURABLE: the proactive, non-regressing sibling of DURABLE_ELBERETH. Once per level, on a SAFE
+        arrival while diving (role allowed, depth >= ENGRAVE_DURABLE_MIN_DEPTH, nothing hostile within
+        ENGRAVE_DURABLE_CLEAR, _durable_here_ok()), engrave a lasting Elbereth with the spare blade and record it in
+        _durable_sq, so a later faint/Weak hold on this level walks back to it (faint_guard._durable_target) and never
+        has to write Elbereth in the dust under threat (the regressed DURABLE_ELBERETH did exactly that). Sits just
+        below faint_guard and just above dig_first in the chain."""
+        agent = self.agent
+        if not jf_config.ENGRAVE_DURABLE or not self.diving:
+            yield False
+        roles = jf_config.ENGRAVE_DURABLE_ROLES
+        # role names ('Wizard', ...) -> Character ints, as ring_amulet_logic._role_in does; None means every role
+        if roles is not None and not any(agent.character.role == getattr(Character, str(n).upper(), object())
+                                         for n in roles):
+            yield False
+        bl = agent.blstats
+        if bl.depth < jf_config.ENGRAVE_DURABLE_MIN_DEPTH:
+            yield False
+        level = agent.current_level()
+        # SAFE arrival only: we landed on this level recently (the same window the crowded-arrival retreat uses) and
+        # haven't engraved here yet (_durable_here_ok checks level.key() not in _durable_sq)
+        arrived = self._arrived
+        if arrived is None or arrived[0] != level.key() or bl.time - arrived[1] > ARRIVAL_WATCH_TURNS:
+            yield False
+        if self._near_hostiles(radius=jf_config.ENGRAVE_DURABLE_CLEAR) or not self._durable_here_ok():
+            yield False
+        tool = agent.durable_engrave_tool()
+        if tool is None:
+            yield False
+        yield True
+        key = level.key()
+        agent.log(f'ENGRAVE_DURABLE proactive Elbereth on arrival at {(int(bl.y), int(bl.x))} depth {bl.depth} '
+                  f'with {tool.text!r}')
+        if agent.engrave_durable(tool):
+            self._durable_sq[key] = (int(bl.y), int(bl.x))
+
     def _durable_target(self):
-        """DURABLE_ELBERETH: this level's engraved Elbereth (y, x) when it is within DURABLE_WALK steps and nothing is
-        next to us, else None."""
+        """DURABLE_ELBERETH / ENGRAVE_DURABLE: this level's engraved Elbereth (y, x) when it is within DURABLE_WALK
+        steps and nothing is next to us, else None."""
         agent = self.agent
         bl = agent.blstats
         sq = self._durable_sq.get(agent.current_level().key())
@@ -2507,7 +2554,7 @@ class DiveLogic:
         here = (agent.current_level().key(), bl.y, bl.x)
         if here not in self._hold_squares:
             yield False
-        durable = jf_config.DURABLE_ELBERETH and self._durable_sq.get(here[0]) == (int(bl.y), int(bl.x))
+        durable = self._durable_on and self._durable_sq.get(here[0]) == (int(bl.y), int(bl.x))
         engraving = (agent.inventory.engraving_below_me or '').lower()
         if engraving != 'elbereth':
             self._hold_squares.discard(here)
@@ -6192,6 +6239,10 @@ class DiveLogic:
         agent = self.agent
         level = agent.current_level()
         key = level.key()
+        # SCARE_CARPET: scare_carpet (just above dig_first) asks for the hole to open on the scroll's own square so it
+        # migrates down with us. Dig here, bypassing the nearby-stairs preference and the AT_THREAT hold, when the
+        # current square is diggable; the flag is one-shot (cleared below, re-set each turn we stand on the scroll).
+        forced_here = jf_config.SCARE_CARPET and self._dig_here_forced == (int(agent.blstats.y), int(agent.blstats.x))
         if key in self.undiggable or level.dungeon_number not in MAIN_LINE:
             return False
         if self.in_valley():
@@ -6238,11 +6289,11 @@ class DiveLogic:
         # pit we dug: climbing out takes turns, the hole only 4 more (dsafe-A jf14 s5 thrashed between its pit
         # and a '>' 3 squares away under a centaur's crossbow bolts: 'You are still in a pit' x6)
         dis = agent.bfs()
-        if not (DIG_ESCAPE and tool is not None and self._in_own_pit()):
+        if not forced_here and not (DIG_ESCAPE and tool is not None and self._in_own_pit()):
             for d, _, _, kind in self.down_targets():
                 if kind == 'stairs' and d <= DIG_STAIRS_RADIUS:
                     return False
-        if jf_config.AT_THREAT_AVOID and tool is not None:
+        if jf_config.AT_THREAT_AVOID and tool is not None and not forced_here:
             holding, act = self._at_hold()
             if holding:
                 # an @ comes for us (or was just in sight): no pit to be caught in -- fight2 meets it on level ground
@@ -6256,6 +6307,11 @@ class DiveLogic:
         y, x = agent.blstats.y, agent.blstats.x
         candidates = utils.isin(level.objects, PLAIN_FLOOR) | ((level.objects == -1) & level.walkable)
         floor = [p for p in zip(*candidates.nonzero()) if dis[p] >= 0]
+        if forced_here:
+            # SCARE_CARPET: restrict the dig to this square (the scroll's) so the hole opens on it; one-shot
+            self._dig_here_forced = None
+            if self._diggable_spot(int(y), int(x)):
+                floor = [(int(y), int(x))]
         max_wet = 0
         if not any(self._diggable_spot(*p) for p in floor):
             # all reachable floor borders water: first a moat channel toward dry land (MEDUSA_HOP)
@@ -7862,6 +7918,68 @@ class DiveLogic:
         agent.log(f'SCARE scroll gone from {self._scare_spot[1]}: below {[i.text for i in below]}')
         self._scare_spot = None
         return False
+
+    @Strategy.wrap
+    def scare_carpet(self):
+        """SCARE_CARPET: on the regular Dungeons-of-Doom dive, drop a held scroll of scare monster underfoot when an
+        Elbereth-ignorer (elf / soldier / minotaur) comes within SCARE_CARPET_RADIUS -- a scroll on the floor scares
+        them where Elbereth doesn't (monmove.c onscary, before the Elbereth exclusion). fight2 (above in the chain)
+        strikes them from the square, and dropped_scrolls blocks the re-pickup that would turn the scroll to dust. When
+        the dive is ready to dig, force the hole at the scroll's own square (_dig_here_forced) so the scroll migrates
+        down with us (impact_drop, do.c:1356: the hole must open on the scroll). Medusa's level, the castle and
+        Gehennom/Valley keep their own scare logic and are skipped here.
+
+        SMOKE-TEST before trusting at scale: confirm in-engine that a scroll dropped on the hero's square and then holed
+        there actually arrives on the next level (drop-square == exit-square; the castle back-door bug was the opposite).
+        """
+        agent = self.agent
+        if not jf_config.SCARE_CARPET or not jf_config.SCARE_KEEP or not self.diving:
+            yield False
+        level = agent.current_level()
+        # regular DoD only: Medusa's level (DEEP_ITEMS), the castle (CASTLE_SCARE) and Gehennom/Valley own their scares
+        if level.dungeon_number != Level.DUNGEONS_OF_DOOM or self.on_medusa_level() or self._castle_scare() or \
+                self.in_gehennom() or self.in_valley():
+            yield False
+        bl = agent.blstats
+        lo, hi = jf_config.SCARE_CARPET_DEPTH
+        if not (lo <= bl.depth <= hi):
+            yield False
+        key = level.key()
+        pos = (int(bl.y), int(bl.x))
+        # (a) already standing on our carpet scroll here: keep the dig on this square so the scroll falls through with us
+        if self._carpet_spot == (key, pos):
+            below = agent.inventory.items_below_me
+            if below is not None and not any(power.is_scare_candidate(i) for i in below):
+                self._carpet_spot = None   # the scroll is gone (picked up, used, destroyed)
+            else:
+                # set before declining: dig_first (just below) runs try_dig_down, which digs at _dig_here_forced
+                self._dig_here_forced = pos
+            yield False
+        # (b) drop a scare scroll when an Elbereth-ignorer closes in (only one carpet per level)
+        if self._carpet_spot is not None and self._carpet_spot[0] == key:
+            yield False
+        known, candidates = power.scare_scrolls(agent)
+        drop = known[:1]
+        if not drop and not jf_config.SCARE_CARPET_KNOWN_ONLY:
+            drop = [it for it, p in candidates
+                    if p > 0 and agent.inventory._scroll_key(it) not in self._not_scare_keys][:1]
+        if not drop:
+            yield False
+        radius = jf_config.SCARE_CARPET_RADIUS
+        near = [m for m in agent.get_visible_monsters()
+                if max(abs(m[1] - pos[0]), abs(m[2] - pos[1])) <= radius and self._melee_ignores_elbereth(m[3])]
+        if not near:
+            yield False
+        # the carpet is pointless where we can't dig the migrating hole (and never on stairs / an arrival square)
+        if not self._diggable_spot(pos[0], pos[1]) or pos in level.stair_destination:
+            yield False
+        yield True
+        self._carpet_spot = (key, pos)
+        agent.log(f'SCARE_CARPET drop {[it.text for it in drop]} at {pos} depth {bl.depth} vs '
+                  f'{[m[3].mname for m in near]} hp {bl.hitpoints}/{bl.max_hitpoints}')
+        agent.inventory.drop(drop, [1] * len(drop))
+        # never pick it up again (a second pickup turns scare monster to dust)
+        agent.inventory._note_dropped(drop, [1] * len(drop), force=True)
 
     @Strategy.wrap
     def gehennom_scare(self):

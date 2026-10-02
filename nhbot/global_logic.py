@@ -169,6 +169,15 @@ class ItemPriority(ItemPriorityBase):
                            key=lambda i: -utils.calc_dps(*self.agent.character.get_ranged_bonus(None, i))):
             add_item(item)
 
+        # ENGRAVE_DURABLE: keep ONE spare engraving blade (athame / +0-or-better dagger..saber) so a proactive durable
+        # Elbereth can be written on arrival (ENGRAVE text never garbles and rarely smudges). After the healing-potion
+        # keep (above) and the thrown weapons, and only one light blade, so it never displaces food/healing;
+        # engrave_tool_candidate already excludes the equipped/swap weapon, so it never wields away the primary.
+        if jf_config.ENGRAVE_DURABLE and dive is not None and dive.diving:
+            blade = self.agent.inventory.engrave_tool_candidate(items)
+            if blade is not None:
+                add_item(blade, count=1)
+
         if jf_config.LIZARD_KEEP:
             # the stoning cure (emergency_strategy eats it when Stoned): one lizard corpse, 10 weight, never rots
             for item in filter(lambda i: i.is_corpse() and i.monster_id == self.agent.LIZARD_ID, items):
@@ -1073,6 +1082,13 @@ class GlobalLogic:
             ])
             .preempt(self.agent, [
                 self.dive.water_demon_vigil(),
+            ])
+            # ENGRAVE_DURABLE: on a safe arrival, engrave a lasting Elbereth to shelter later faints on this level
+            # (below faint_guard, above dig_first); SCARE_CARPET: drop a scare scroll vs an Elbereth-ignorer and dig
+            # under it so it migrates down. Both default OFF and self-contained.
+            .preempt(self.agent, [
+                self.dive.engrave_durable_arrival().condition(lambda: jf_config.ENGRAVE_DURABLE),
+                self.dive.scare_carpet().condition(lambda: jf_config.SCARE_CARPET),
             ])
             # a digger with room to dig finishes the hole instead of walking to a fight
             .preempt(self.agent, [

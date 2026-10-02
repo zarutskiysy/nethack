@@ -186,6 +186,15 @@ WISH_LEARN = True
 # loot and picked it up again: 250 of 3158 games turned one to dust), a scroll we dropped is never picked up
 # again, and a dust event names the scare monster label (power.scare_scrolls for castle/gehennom)
 SCARE_KEEP = False
+# SCARE_CARPET (dive_logic.scare_carpet): on the regular Dungeons-of-Doom dive, drop a held scroll of scare monster
+# when an Elbereth-ignorer (elf / soldier / minotaur) comes within SCARE_CARPET_RADIUS, fight on it (a scroll on the
+# floor scares them where Elbereth doesn't -- onscary, before the Elbereth exclusion), and force the hole at the
+# scroll's own square so it migrates down with us (impact_drop: the hole must open on the scroll). Prereq: SCARE_KEEP
+# on (else dropped scrolls get re-picked-up into dust). KNOWN_ONLY keeps the castle's gamble scrolls for CASTLE_SCARE.
+SCARE_CARPET = False
+SCARE_CARPET_DEPTH = (8, 29)       # (min, max) depth band; below the castle so a scroll isn't spent before it
+SCARE_CARPET_RADIUS = 3            # drop when an Elbereth-ignoring meleer is within this many squares
+SCARE_CARPET_KNOWN_ONLY = True     # drop only a scroll known to be scare monster (not an unidentified candidate)
 # while diving, ItemPriority keeps food and then the passage candidates (potions/rings that may be levitation,
 # ...) ahead of the thrown weapons: 23 of 90 base games dropped potion types for good, mostly for daggers
 # and the dive's pick-axe/mattock
@@ -1693,6 +1702,17 @@ ROLE_GRIND_LEVELS = {'Rogue': {}, 'Knight': {}, 'Tourist': {}, 'Priest': {}}
 DURABLE_ELBERETH = False
 DURABLE_CLEAR = 5                   # no hostile within this many squares when an engraving starts
 DURABLE_WALK = 15                   # BFS steps a hold walks to the level's engraved Elbereth
+
+# ENGRAVE_DURABLE (dive_logic.engrave_durable_arrival): the PROACTIVE sibling of DURABLE_ELBERETH. The reactive
+# DURABLE_ELBERETH engraved inside the faint/Weak hold (the worst moment, spends the spare blade under threat) and
+# regressed -0.0095; this one engraves a lasting Elbereth ONCE per level on SAFE arrival instead (no hostile within
+# ENGRAVE_DURABLE_CLEAR, depth >= ENGRAVE_DURABLE_MIN_DEPTH, _durable_here_ok()), records it in _durable_sq, and later
+# holds (faint guard) walk back to it / step off it without ever dusting over it (shared DURABLE walk-to and step-off).
+# NOTE: FAINT_PRAYER_GAP / WEAK_PRAYER_GAP are tuned together with this flag later (a separate A/B bundle) -- not here.
+ENGRAVE_DURABLE = False
+ENGRAVE_DURABLE_ROLES = ('Wizard',)   # role names allowed to engrave on arrival (None: every role)
+ENGRAVE_DURABLE_MIN_DEPTH = 5         # only from this depth down
+ENGRAVE_DURABLE_CLEAR = 7             # no hostile within this many squares when the arrival engraving starts
 
 # RING_MODULE (item/ring_amulet_logic.py, item/scroll_identify.py; tuning in item/ring_amulet_config.py): the ring/amulet
 # module of CleverShovel/nethacker@9dc0822 with the fixes of 29ab0a7 (identify-menu paging, harm-gated reading). It wears
