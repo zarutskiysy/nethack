@@ -16,11 +16,16 @@ import roles  # noqa: E402
 # games): Healers on vlomshakov's engines, Samurai on daglar's v35. Every other identity plays the main engine, nhbot.
 # Human Priests left PetrAnokhin's pf_pa for nhbot (eL1fe's spell bundle casts their healing): +0.053 +- 0.022 per game
 # over 113 paired held-out games (ph0/ph1), in line with the hub's private seeds (dag25 0.260 vs pf_pa 0.228).
+# v9p (private-safe): only routes that beat nhbot on the hub's VERIFIED (private-seed) tier; the public-seed-selected
+# ports of v6/v7 overfit and are left out, and Tourists are back on nhbot (pf_dtad7a: 0.127 verified vs nhbot ~0.15).
 SPECIALISTS = {
-    "tou": "adapter_pf_dtad7a",
     "hea-gno": "adapter_pf_hg",
     "hea-hum": "adapter_pf_hh",
     "sam": "adapter_pf_v35",
+    "arc-gno": "adapter_pf_v36",              # verified 0.405 vs nhbot 0.356
+    "ran-hum-neu": "adapter_pf_s25p8",        # verified 0.31 vs nhbot 0.21-0.25
+    "ran-elf-cha-fem": "adapter_pf_s25p8",    # verified 0.356 vs nhbot 0.325
+    "kni": "adapter_pf_s25p8",                # verified 0.209/0.247 vs nhbot 0.144/0.144
 }
 
 
