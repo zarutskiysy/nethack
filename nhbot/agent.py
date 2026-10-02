@@ -1601,7 +1601,25 @@ class Agent:
             dive.dive_hunger_prayers += 1   # CAMP_HUNGER_GAP: the dive's hunger cycles so far
         turn_before = self.blstats.time
         history_len = len(self._message_history)
-        self.step(A.Command.PRAY)
+        try:
+            self.step(A.Command.PRAY)
+        except BaseException:
+            # PRAYER_RECORD_FIX: a strategy that preempts during the prayer's step (its update callbacks raise
+            # AgentChangeStrategy) skipped everything below, so the prayer was never recorded: 13 of 17 such losses
+            # in 1023 tr0/p0/v2a/b3/wz0 games were lycanthropy-cure prayers ('You return to human form!' fires a
+            # preemption), and the next prayer then came 4-998 turns later at a believed gap of 1200-4900:
+            # p0 arc-hum-neu-fem s209 (T898 cure, T902 HP prayer, killed praying), p0 tou-hum-neu-mal s211
+            # (T12275/T12281, killed praying), v2a ran-orc-cha-mal s200 and p0 wiz-elf-cha-mal s214 (hunger prayers
+            # 658/126 turns on: failed, rescue dives)
+            if jf_config.PRAYER_RECORD_FIX and \
+                    'You begin praying' in ' '.join(self._message_history[history_len:] + [self.message]):
+                self._after_prayer(turn_before, history_len, limit)
+            raise
+        self._after_prayer(turn_before, history_len, limit)
+        # TODO: return value
+        return True
+
+    def _after_prayer(self, turn_before, history_len, limit):
         self.last_prayer_turn = self.blstats.time
         messages = ' '.join(self._message_history[history_len:] + [self.message])
         failed = answered = False
@@ -1617,8 +1635,6 @@ class Agent:
                          f'prayers={self.prayer_model.prayers} failures={self.prayer_model.failures}')
             except Exception:
                 self._prayer_model_error()
-        # TODO: return value
-        return True
 
 
     ######## PRAYER MODEL (nhmodel/prayer.py: pray.c's odds; 3 errors -> the old rules for the rest of the game)
@@ -2580,6 +2596,21 @@ class Agent:
 
             # FEYE_TELE: the same filter once the eye's corpse has nothing left to give (telepathy is ours)
             feye_tele = jf_config.FEYE_TELE and not jf_config.FEYE_FIX and self.character.telepathic
+            # FEYE_GUARD: before telepathy fight2 meleed a floating eye we can see with no blindfold or towel under any
+            # conditions (melee_attack only swaps in a throw when one is allowed), and each surviving swing freezes us
+            # 2 times in 3 for d(lvl+1, 70) turns (uhitm.c passive AD_PLYS): tr0 cav-hum-law-mal s201 froze 5 times in
+            # 700 turns, the last two Weak/Fainting, and starved frozen; p0 wiz-hum-cha-mal s203 froze twice while
+            # Weak and died fainted. Before telepathy the eye is hit only on the stall breaker's own terms: nothing
+            # else hostile in view, >= 90% HP and not Hungry (a freeze outlasts a Hungry stomach's ~100 turns to Weak);
+            # FEYE_TELE's boxed-in hit below also waits until we are not Hungry
+            feye_hunger_ok = Hunger.HUNGRY if jf_config.FEYE_GUARD else Hunger.WEAK
+            if jf_config.FEYE_GUARD and not jf_config.FEYE_FIX and not feye_tele and \
+                    not self.character.prop.blind and not (jf_config.FEYE_BLIND and self._feye_tool() is not None):
+                bl = self.blstats
+                if any(not self._is_floating_eye_at(m[1], m[2]) for m in monsters) or \
+                        bl.hitpoints < 0.9 * bl.max_hitpoints or bl.hunger_state >= Hunger.HUNGRY:
+                    actions = [a for a in actions if not (a[1][0] == 'melee' and self._is_floating_eye_at(
+                        self.blstats.y + a[1][1], self.blstats.x + a[1][2]))]
             if (jf_config.FEYE_FIX or feye_tele) and not self.character.prop.blind:
                 # never melee a floating eye we can see: its passive gaze freezes us for up to 127 turns. The
                 # exploration's stall breaker (allow_attack_all, below) keeps only attacks, and the eye's -110
@@ -2592,7 +2623,7 @@ class Agent:
                 bl = self.blstats
                 others = [m for m in monsters if not self._is_floating_eye_at(m[1], m[2])]
                 feye_ok = allow_attack_all and not others and bl.hitpoints >= 0.9 * bl.max_hitpoints and \
-                    bl.hunger_state < Hunger.WEAK
+                    bl.hunger_state < feye_hunger_ok
                 if feye_tele:
                     # the stall breaker's eye melee goes through the boxed-in steps below instead (Elbereth first):
                     # it froze jf40 s14 at T12914 all the same (alone, 71/71 HP)
@@ -2624,7 +2655,7 @@ class Agent:
                         on_elbereth = (self.inventory.engraving_below_me or '').lower() == 'elbereth'
                         if bl.time - since >= jf_config.FEYE_TELE_BOXED:
                             if not others and bl.hitpoints >= 0.9 * bl.max_hitpoints and \
-                                    bl.hunger_state < Hunger.WEAK:
+                                    bl.hunger_state < feye_hunger_ok:
                                 if on_elbereth and self.can_engrave():
                                     self.log('FEYE_TELE still boxed in: wiping our Elbereth before hitting the eye')
                                     self.engrave('x')
@@ -3556,6 +3587,38 @@ class Agent:
                 (not item.is_corpse() or
                  item.monster_id in [MON.from_name(n) - nh.GLYPH_MON_OFF for n in ['lizard', 'lichen']]) and
                 not (jf_config.LIZARD_KEEP and item.is_corpse() and item.monster_id == self.LIZARD_ID)]
+
+    @Strategy.wrap
+    def align_prayer(self):
+        """ALIGN_PRAYER: one early prayer without trouble while the alignment record is still 0. Cavemen, Priests,
+        Tourists, Valkyries and Wizards start at record 0 (role.c initrecord), and a neutral one gains nothing from the
+        Dlvl-1 fauna (makemon.c set_malign: an always-hostile co-aligned monster -- jackal, newt, sewer rat, grid bug,
+        lichen -- has malign 0). At record 0 pray.c pleased() fixes the worst trouble only half the time (action =
+        !rnl(2) ? 1 : 0) and still restarts the timeout: in 1023 tr0/p0/v2a/b3/wz0 games 44 answered prayers were
+        made at record 0 and 23 fixed nothing ('You feel that X is satisfied.'); 19 of those 23 games ended at Dlvl 1-9
+        (10 of the 21 that worked): v2a cav-hum-neu-mal s200, cav-gno-neu-mal s205, wz0 wiz-gno-neu-mal s624/s636/s639,
+        wiz-hum-neu-mal s635, p0 wiz-gno-neu-mal s201/s210, ... The misses before turn 300 (HP prayers) are out of
+        reach; the 13 later ones, mostly the first Weak prayer at T850-1300, are what this catches. A
+        prayer with no trouble at all once the starting timeout (300, u_init.c) has run out is answered (can_pray
+        p_type 3) and gives +1 (pray.c:941), so the first Weak prayer ~600-900 turns later fixes the hunger for sure
+        when answered (P(rnz(350) <= gap + 200) ~0.89-0.93) instead of 1 time in 2."""
+        if not jf_config.ALIGN_PRAYER or self.last_prayer_turn is not None or not self._prayer_model_active() or \
+                self.global_logic.dive.diving:
+            yield False
+        bl = self.blstats
+        try:
+            model = self.prayer_model
+            ok = model.record is not None and model.record <= 0 and model.prayers == 0 and \
+                bl.time >= jf_config.ALIGN_PRAYER_TURN and model.trouble_limit() == 0 and \
+                bl.hunger_state <= Hunger.NOT_HUNGRY and model.p_answered(0) >= 0.99
+        except Exception:
+            self._prayer_model_error()
+            ok = False
+        if not ok or self.get_visible_monsters() or (bl.y, bl.x) in self.current_level().altars:
+            yield False
+        yield True
+        self._pray_reason = 'align'
+        self.pray()
 
     @utils.debug_log('cure_disease')
     @Strategy.wrap

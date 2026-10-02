@@ -2052,6 +2052,35 @@ class DiveLogic:
         return jf_config.RANGED_ON_ELB and \
             self.agent.blstats.time - self._ranged_hit_turn <= jf_config.RANGED_BREAK_TURNS
 
+    def _lone_weak_deadly(self, monster):
+        """LONE_WEAK_THREAT: the lone-weak exemption above keys on the base level (mlevel <= 2), which takes in the
+        grind's worst killers -- rothes (3 attacks, 1d3/1d3/1d8), giant bats (speed 22), giant ants (speed 18),
+        dwarves with mattocks (d12), hill orcs, hobbits, were-creatures in animal form -- so below
+        ELBERETH_REST_BELOW the bot fought them on to death instead of resting on Elbereth (all of these respect it,
+        monmove.c onscary). With the flag the exemption holds only while the monster's own melee
+        (nhmodel.prayer.monster_turn_damage: mhitu.c to-hit against our AC, its attacks and speed) leaves P(it deals
+        >= our HP within LONE_WEAK_TURNS turns) below LONE_WEAK_PDIE.
+        Evidence (tr0/p0/v2a/b3/wz0, 1023 games): 60 shallow deaths end with a single attacker kind of mlevel <= 2 in
+        their last 8 turns, 34 of them with no Elbereth rest in their last 40 turns -- v2a wiz-hum-neu-mal s201 and
+        wiz-gno-neu-mal s201 (a lone rothe after the force bolts ran out, 10-11 HP to dead, no engraving), p0
+        wiz-hum-neu-mal s202 (a hobbit from 13 HP), tr0 bar-hum-cha-mal s211 (a rothe at 7-9 HP)."""
+        if not jf_config.LONE_WEAK_THREAT:
+            return False
+        try:
+            import math
+            from .nhmodel.prayer import _phi, monster_turn_damage
+            bl = self.agent.blstats
+            name = getattr(monster[3], 'mname', 'unknown')
+            m1, v1, spd = monster_turn_damage(name, int(bl.armor_class), int(bl.depth), int(bl.experience_level))
+            turns = jf_config.LONE_WEAK_TURNS
+            mean, var = m1 * spd * turns, v1 * spd * turns
+            if mean <= 0:
+                return False
+            p_die = 1.0 - _phi((bl.hitpoints - 0.5 - mean) / math.sqrt(max(var, 1.0)))
+            return p_die >= jf_config.LONE_WEAK_PDIE
+        except Exception:
+            return False
+
     @Strategy.wrap
     @_hold_loop
     def elbereth_rest(self):
@@ -2076,7 +2105,8 @@ class DiveLogic:
             yield False
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
-        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6:
+        if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
+                not self._lone_weak_deadly(near[0]):
             self._elbereth_resting = False
             yield False
         # REST_FIGHT_WEAK: ... at any HP when one blow kills it (makemon difficulty <= 2, not faster than us): the

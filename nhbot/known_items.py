@@ -249,6 +249,14 @@ class KnownItemsGuard:
             return
         direction = agent.calc_direction(bl.y, bl.x, int(target[1]), int(target[2]))
         ray_ok = critical or self._free_run_behind(target, dy, dx) >= jf_config.KNOWN_ITEMS_RAY_RUN
+        if critical and jf_config.RAY_CRIT_RUN:
+            # RAY_CRIT_RUN: at critically low HP a sleep/lightning/magic-missile ray needs a short free run behind the
+            # target too. A ray's range is rn1(7,7) squares, -2 per monster it passes (zap.c buzz), so with a wall
+            # 1-2 squares behind an adjacent target it comes back through us: a 6d6 bolt or sleep next to the
+            # attacker is death at 1/7 HP -- tr0 val-hum-neu-fem s210 ('You kill the leprechaun! The bolt of
+            # lightning hits you!'), v2a cav-gno-neu-mal s202 (magic missile at a gelatinous cube). The beam of
+            # striking (no bounce) and the other plans stay open.
+            ray_ok = self._free_run_behind(target, dy, dx) >= jf_config.RAY_CRIT_RUN
         name = getattr(target[3], 'mname', '?')
         wand, wname = mino._wand(('sleep',))
         if wand is None and critical:

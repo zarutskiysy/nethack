@@ -994,6 +994,8 @@ class GlobalLogic:
             ])
             .preempt(self.agent, [
                 self.agent.cure_disease().every(5),
+                # ALIGN_PRAYER: a record-0 hero's one early no-trouble prayer (agent.align_prayer)
+                self.agent.align_prayer().every(25),
             ])
             .preempt(self.agent, [
                 # LIZARD_KEEP: the stoning cure, before the eaters look at the corpse

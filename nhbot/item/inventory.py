@@ -712,9 +712,23 @@ class Inventory:
                     for current_screen in range(max(screens) + 1)))
                 self.agent.step(A.Command.PICKUP, iter(list(text) + [A.MiscAction.MORE]))
 
+            refused_heavy = False
             while re.search('You have [a-z ]+ lifting ', self.agent.message) and \
                     'Continue?' in self.agent.message:
+                if jf_config.HEAVY_LIFT_GUARD and \
+                        re.search('You have (much trouble|extreme difficulty) lifting ', self.agent.message) and \
+                        not re.search(r'pick-axe|mattock|broad pick|gold piece', self.agent.message):
+                    # pickup.c lift_object: 'much trouble' means Stressed once lifted, 'extreme difficulty'
+                    # Strained or worse ('You cannot fight while so heavily loaded'); the item split never plans
+                    # that, so its weight was misread (a lycanthrope's corpse, see item_manager) -- leave it
+                    # (not a digging tool, which the dive needs whatever it costs, nor gold)
+                    self.agent.type_text('n')
+                    refused_heavy = True
+                    continue
                 self.agent.type_text('y')
+            if refused_heavy:
+                self.unreachable_items_until[self._here()] = self.agent.blstats.time + 300
+                raise AgentPanic('too heavy to lift without becoming Stressed')
             if 'You cannot reach the bottom of the pit' in self.agent.message:
                 # standing at a pit's edge: its items are out of reach until we are in it; the gatherer
                 # retried without the clock moving until the 'turn inactivity' guard fired (54 times)
@@ -951,7 +965,37 @@ class Inventory:
                                        if i.is_thrown_projectile()
                                        and i != best_melee_weapon and i != wielded_melee_weapon])
 
+        if jf_config.SHOP_SAFETY:
+            # dothrow.c throwit: a cursed (or greased) missile slips / misfires 1 time in 7 in a random direction
+            # (u.dx, u.dy = rn2(3) - 1). tr0 ran-gno-neu-mal s203 threw its known 'cursed crude dagger' at a newt in a
+            # shop -- 'The crude dagger slips as you throw it! Annootok gets angry!' -- and b3 val-dwa-law-fem s604 an
+            # orcish dagger of unknown BUC in an armor shop ('Yildizeli gets angry!'); both shopkeepers' wands of
+            # striking killed the XL7 heroes. In a shop or with a shopkeeper in view only missiles known not to be
+            # cursed fly; elsewhere, with a peaceful or the pet in view, no known-cursed ones.
+            risk = self._missile_slip_risk()
+            if risk == 'shop':
+                valid_combinations = [(l, a) for l, a in valid_combinations
+                                      if a.status in (Item.UNCURSED, Item.BLESSED)]
+            elif risk == 'peaceful':
+                valid_combinations = [(l, a) for l, a in valid_combinations if a.status != Item.CURSED]
+
         return valid_combinations
+
+    def _missile_slip_risk(self):
+        """SHOP_SAFETY: 'shop' (standing in a shop, or a shopkeeper in view), 'peaceful' (a peaceful or our pet in
+        view) or None."""
+        agent = self.agent
+        try:
+            bl = agent.blstats
+            level = agent.current_level()
+            if level.shop[bl.y, bl.x] or level.shop_interior[bl.y, bl.x] or \
+                    utils.isin(agent.glyphs, G.SHOPKEEPER).any():
+                return 'shop'
+            if agent.monster_tracker.peaceful_monster_mask.any() or utils.isin(agent.glyphs, G.PETS).any():
+                return 'peaceful'
+        except Exception:
+            return 'shop'
+        return None
 
     def get_best_ranged_set(self, items=None, *, throwing=True, allow_best_melee=False,
                             allow_wielded_melee=False,
