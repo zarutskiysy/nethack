@@ -360,6 +360,10 @@ MEDUSA_SKIP_FIRST_STEPS = 4
 # that hole: 1 time in 4 the fall carries us past her level, 3 in 4 it lands us beside her '<' again. No dig on her
 # islands (no flood roll), a few steps among her ravens per landing, a rest up there between landings. Medusa passes
 # before (devruns tr0/p0/v2a/mt*/a*): medusa-1 86%, -2 51%, -3 40%, -4 58%.
+# REJECTED (mcb0/mcb1, 98 deterministic pairs of Medusa games): -0.0147 +- 0.0050 per game, 6 better / 20 worse. The skip
+# works (7 of 42 plunges, 17%), but the extra landings and the rests up there cost more: passes medusa-1 12 -> 7 of 15,
+# medusa-4 16 -> 10 of 28, medusa-2 11 -> 12 of 21, medusa-3 12 -> 11 of 24. (Also: a seen hole is escaped 1 time in 5,
+# trap.c dotrap -- the plunge should then use '>' (TOOKPLUNGE) instead of giving the hole up.)
 MEDUSA_HOLE_CYCLE = False
 MEDUSA_HOLE_CYCLE_MAX = 20          # climbs off Medusa's level
 MEDUSA_HOLE_CYCLE_STEPS = 16        # her '<' this many BFS steps away at most (else the usual dig)
