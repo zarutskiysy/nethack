@@ -59,3 +59,11 @@
   (`roles.attributes_identity`, so the per-role config applies even when the welcome line is missed), and the Tourist
   engine `pf_dtad7a` (DT6A/nethacker@ad7a864) routed for `tou`. The `RING_MODULE`/`MEDUSA_HOP` module code is
   byte-identical to daglar's, so this reproduces the leader's behaviour exactly, with v4's extra fixes on top.
+- **v6:** built on v5. Specialist engine ports for the identities where a competitor engine clearly beats nhbot
+  (gaps shared by daglar's own 0.350 generalist, which routes these to older/nhbot engines): sam-hum-law-fem -> pf_v37
+  (v5 0.260 -> 0.351), sam-hum-law-mal -> pf_vk_s25 (0.257 -> 0.345), val-dwa-law-fem -> pf_vk_s23 (0.318 -> 0.508),
+  all measured on the exact public seeds; engines from daglar-dragomirov/nethacker@d8da1f72, routing per daglar@96597c11.
+  val-hum stays on nhbot (already ~0.49). Also shipped default-OFF (for later A/B): ENGRAVE_DURABLE (proactive
+  blade-engraved Elbereth on safe dive arrival) and SCARE_CARPET (carry a scare scroll through a self-dug hole).
+  Tried and dropped (regressed on public seeds): FB_RESERVE=15 for wizards (-0.055 on the two tested, despite +0.031
+  on dev seeds) and the Knight deep grind (-0.02..-0.03).

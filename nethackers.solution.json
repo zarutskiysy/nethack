@@ -1,10 +1,11 @@
 {
   "schema": "nethackers.solution/v1",
-  "name": "zarutskiysy-v5",
+  "name": "zarutskiysy-v6",
   "root": ".",
   "parents": [
     "github.com/zarutskiysy/nethack@bb7def3548dcb618066c2c92b8bc3335631aaee1",
     "github.com/daglar-dragomirov/nethacker@6c814836b3b36d63e2055de88d9549b9908062ef",
+    "github.com/daglar-dragomirov/nethacker@96597c11db0a602f3e12b2ee6d03275d9c4bcddd",
     "github.com/zarutskiysy/nethack@71335bf6953b5fd3b792b5d7677ece3da5e6ae8a",
     "github.com/daglar-dragomirov/nethacker@008bd0b076f94416867d96d147b715aeafe4c680",
     "github.com/daglar-dragomirov/nethacker@8aa7d764d47fbb48779222922232b8e13a9ec71a",

@@ -21,6 +21,10 @@ SPECIALISTS = {
     "hea-gno": "adapter_pf_hg",
     "hea-hum": "adapter_pf_hh",
     "sam": "adapter_pf_v35",
+    # v6: route the weak specialists to daglar's newer frontier engines (longest prefix wins in _specialist)
+    "sam-hum-law-fem": "adapter_pf_v37",      # pf_v35 0.260 -> pf_v37 ~0.354 (daglar elite, same public seeds)
+    "sam-hum-law-mal": "adapter_pf_vk_s25",   # pf_v35 0.257 -> pf_vk_s25 ~0.373
+    "val-dwa": "adapter_pf_vk_s23",           # nhbot 0.318 -> pf_vk_s23 ~0.526 (val-hum stays on nhbot ~0.49)
 }
 
 
