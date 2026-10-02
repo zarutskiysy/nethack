@@ -1606,6 +1606,17 @@ ELBERETH_REWRITE_FIX = True
 # e29eb82's 0.227 with Knights on Dlvl 1.
 ROLE_GRIND_LEVELS = {'Rogue': {}, 'Tourist': {}, 'Priest': {}}
 
+# DURABLE_ELBERETH (agent.engrave_durable, dive_logic.faint_guard): the faint guard's hold engraves its Elbereth with a
+# spare blade (three pieces, 8 helpless turns, the blade ends 3 points duller) or an athame (one piece, no dulling)
+# instead of writing it in the dust, once per level, and later holds on that level walk back to it (DURABLE_WALK steps
+# at most). Dust Elbereth garbles 28% of writes (engrave.c: 1 letter in 25) and smudges ~1 turn in 85 (allmain.c
+# u_wipe_engr), and a smudge during a faint is a free kill: 55 of 1024 b3/fx1 games died in a grind hold, 25 of them on a
+# garbled or smudged Elbereth and many more killed while fainted. ENGRAVE text has no typos and loses a letter to a
+# wipe only ~1 time in 13-26 (wipe_engr_at). Off pending an A/B.
+DURABLE_ELBERETH = False
+DURABLE_CLEAR = 5                   # no hostile within this many squares when an engraving starts
+DURABLE_WALK = 15                   # BFS steps a hold walks to the level's engraved Elbereth
+
 # RING_MODULE (item/ring_amulet_logic.py, item/scroll_identify.py; tuning in item/ring_amulet_config.py): the ring/amulet
 # module of CleverShovel/nethacker@9dc0822 with the fixes of 29ab0a7 (identify-menu paging, harm-gated reading). It wears
 # identified rings/amulets that always help (slow digestion, free action, poison resistance, gain Str/Con; life saving,

@@ -15,6 +15,7 @@ from . import jf_config, jf_log, jf_scenario
 from . import power
 from . import power_route
 from . import prep_log
+from . import objects as O
 from . import utils
 from .character import Character
 from .exceptions import AgentPanic, AgentFinished, AgentChangeStrategy
@@ -2161,6 +2162,111 @@ class Agent:
         if ret and text.lower() == 'elbereth':
             self.stats_logger.log_event('elbereth_write')
         return ret
+
+    # DURABLE_ELBERETH (jf_config): engrave.c ENGRAVE text has no 1-in-25 letter typos and loses a letter to a wipe only
+    # ~1 time in 13-26 (wipe_engr_at), where a dust Elbereth garbles 28% of writes and smudges every ~85 turns
+    _DURABLE_PROMPT = re.compile(r'What do you want to (engrave|add to the engraving)')
+
+    def durable_engrave_tool(self):
+        """DURABLE_ELBERETH: the item to engrave a lasting Elbereth with, or None: an athame (not known cursed: one
+        piece, no dulling), else an unwielded blade (dagger to saber skill, not a mattock) known to be +0 or better,
+        or of unknown enchantment but known not cursed (mkobj.c: a random weapon's negative enchantment comes with a
+        curse). Daggers and knives first, then the lowest enchantment."""
+        best = None
+        bad = getattr(self, '_durable_bad_letters', set())
+        for item in self.inventory.items:
+            if item.equipped or not item.is_unambiguous() or not isinstance(item.objs[0], O.Weapon):
+                continue
+            if self.inventory.items.get_letter(item) in bad:
+                continue
+            if item.count > 1 or item.at_ready or 'alternate weapon' in (item.text or ''):
+                continue   # engrave.c dulls the whole stack it writes with; missiles and the swap weapon stay sharp
+            obj = item.object
+            sub = getattr(obj, 'sub', None)
+            if sub is None or not (O.P_DAGGER <= sub <= O.P_SABER) or sub == O.P_PICK_AXE:
+                continue
+            athame = obj == O.from_name('athame') and item.status != Item.CURSED
+            if not athame:
+                if item.modifier is not None:
+                    if item.modifier < 0:
+                        continue
+                elif item.status not in (Item.UNCURSED, Item.BLESSED):
+                    continue
+            key = (0 if athame else 1, 0 if sub in (O.P_DAGGER, O.P_KNIFE) else 1,
+                   item.modifier if item.modifier is not None else 0)
+            if best is None or key < best[0]:
+                best = (key, item)
+        return None if best is None else best[1]
+
+    def _engrave_piece(self, letter, text, add):
+        """One engraving with the item at `letter`: 'ok', 'dust' (it only writes in the dust), 'dull' or 'fail'."""
+        result = 'fail'
+
+        def gen():
+            nonlocal result
+            if 'What do you want to write with?' not in self.single_message:
+                yield A.Command.ESC
+                return
+            yield letter
+            for _ in range(10):
+                msg = self.single_message
+                if 'Do you want to add to the current engraving?' in msg:
+                    yield add
+                    continue
+                if 'too dull for engraving' in msg:
+                    result = 'dull'
+                    return
+                if 'write in the dust' in msg:
+                    result = 'dust'
+                    break
+                if self._DURABLE_PROMPT.search(msg):
+                    break
+                if self._observation['misc'][2]:
+                    yield ' '
+                    continue
+                break
+            if result == 'dust' or not self._DURABLE_PROMPT.search(self.single_message):
+                if result != 'dust':
+                    result = 'fail'
+                yield A.Command.ESC
+                return
+            yield from text
+            yield '\r'
+            result = 'ok'
+            for _ in range(10):   # 'Your dagger gets dull.', the helpless turns' messages, 'You finish engraving.'
+                if not self._observation['misc'][2]:
+                    break
+                yield ' '
+
+        with self.atom_operation():
+            self.step(A.Command.ENGRAVE, gen())
+        return result
+
+    def engrave_durable(self, item):
+        """DURABLE_ELBERETH: engrave Elbereth with `item` (see durable_engrave_tool) -- an athame in one piece, any
+        other blade in three ('Elb', 'ere', 'th'): engrave.c dulls a weapon by len/2 per engraving and allows
+        (spe+3)*2+1 letters, so a +0 blade writes the three pieces and ends at -3 (one 8-letter piece would need +1);
+        each piece takes len helpless turns. True when it reads back as Elbereth."""
+        letter = self.inventory.items.get_letter(item)
+        athame = item.object == O.from_name('athame') and item.status != Item.CURSED
+        pieces = ['Elbereth'] if athame else ['Elb', 'ere', 'th']
+        self.log(f'DURABLE Elbereth with {item.text!r} ({len(pieces)} pieces)')
+        if not athame:
+            # the blade ends ~3 points duller (its enchantment may not be known): one Elbereth per blade
+            self._durable_bad_letters = getattr(self, '_durable_bad_letters', set()) | {letter}
+        # one atom: a strategy switch between the pieces (a prayer preempted after 'Elb') would leave a partial
+        # engraving that no dust Elbereth can be written over ('You cannot wipe out the message ...')
+        with self.atom_operation():
+            for k, piece in enumerate(pieces):
+                res = self._engrave_piece(letter, piece, 'n' if k == 0 else 'y')
+                if res != 'ok':
+                    self.log(f'DURABLE Elbereth stopped at {piece!r}: {res}')
+                    self._durable_bad_letters = getattr(self, '_durable_bad_letters', set()) | {letter}
+                    break
+            self.inventory.get_items_below_me()
+        text = self.inventory.engraving_below_me or ''
+        self.log(f'DURABLE Elbereth read back {text!r}')
+        return text.lower() == 'elbereth'
 
     ######## NON-TRIVIAL HELPERS
 

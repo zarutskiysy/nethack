@@ -909,6 +909,8 @@ class DiveLogic:
         self._guard_hold_until = -1        # keep holding the faint guard's Elbereth until this turn (IDLE)
         self._ranged_hit_turn = -10 ** 9   # last turn a missile, wand or ray hit us (RANGED_ON_ELB)
         self._hold_squares = set()         # (level key, y, x) where a hold (faint guard, Elbereth rest) stood
+        self._durable_sq = {}              # DURABLE_ELBERETH: level key -> (y, x) of our engraved Elbereth there
+        self._durable_walk_blocked_until = -1
         self._last_update_turn = 0
         self.pet_seen = {}                 # level key -> last turn a pet glyph was in view
         self._last_pos = None              # (level key, (y, x)) at the previous update
@@ -2418,8 +2420,31 @@ class DiveLogic:
         yield True
         if near:
             self._guard_hold_until = bl.time + 20
-        self._hold_squares.add((agent.current_level().key(), bl.y, bl.x))
+        if jf_config.DURABLE_ELBERETH:
+            target = self._durable_target()
+            if target is not None:
+                # this level's engraved Elbereth is a few steps away: hold there (it doesn't smudge while we faint)
+                if getattr(self, '_durable_walk_logged', None) != (bl.time // 50, target):
+                    self._durable_walk_logged = (bl.time // 50, target)
+                    agent.log(f'DURABLE walking to our engraved Elbereth at {target} for the hold')
+                try:
+                    agent.go_to(*target, max_steps=1)
+                except AgentPanic:
+                    self._durable_walk_blocked_until = bl.time + 20
+                return
+        key = agent.current_level().key()
+        self._hold_squares.add((key, bl.y, bl.x))
         if engraving != 'elbereth':
+            if jf_config.DURABLE_ELBERETH:
+                here = (int(bl.y), int(bl.x))
+                if self._durable_sq.get(key) == here:
+                    agent.log(f'DURABLE our engraved Elbereth at {here} reads {engraving!r}: given up')
+                    self._durable_sq.pop(key, None)
+                tool = agent.durable_engrave_tool() if self._durable_here_ok() else None
+                if tool is not None:
+                    if agent.engrave_durable(tool):
+                        self._durable_sq[key] = here
+                    return
             agent.log(f'FAINT guard ({"Fainting" if fainting else "Weak"}{", idle" if idle else ""}): Elbereth vs '
                       f'{[m[3].mname for m in near]} hp={bl.hitpoints}/{bl.max_hitpoints}')
             agent.engrave('Elbereth')
@@ -2427,6 +2452,47 @@ class DiveLogic:
         # one turn at a time while Fainting: a faint interrupting a counted search is read as a longer faint by
         # the faint-length hunger estimate (dive.update), ~30 nutrition too low at XL 7 (grind-food)
         agent.search(1 if near or fainting else 3)
+
+    def _durable_target(self):
+        """DURABLE_ELBERETH: this level's engraved Elbereth (y, x) when it is within DURABLE_WALK steps and nothing is
+        next to us, else None."""
+        agent = self.agent
+        bl = agent.blstats
+        sq = self._durable_sq.get(agent.current_level().key())
+        if sq is None or (int(bl.y), int(bl.x)) == sq or bl.time < self._durable_walk_blocked_until or \
+                agent.character.prop.blind or self._near_hostiles(radius=1):
+            return None
+        dis = agent.bfs()
+        return sq if 0 < dis[sq] <= jf_config.DURABLE_WALK else None
+
+    def _durable_here_ok(self):
+        """DURABLE_ELBERETH: an engraving here may take its 8 helpless turns -- plain floor, sighted, not levitating,
+        nothing hostile within DURABLE_CLEAR, outside Gehennom, and no engraved Elbereth of ours on this level yet."""
+        agent = self.agent
+        bl = agent.blstats
+        level = agent.current_level()
+        prop = agent.character.prop
+        if prop.blind or prop.hallu or prop.polymorph or self.levitating() or not agent.can_engrave() or \
+                level.dungeon_number == GEHENNOM or level.key() in self._durable_sq:
+            return False
+        if level.objects[bl.y, bl.x] not in G.FLOOR or (bl.y, bl.x) in level.stair_destination:
+            return False
+        return not self._near_hostiles(radius=jf_config.DURABLE_CLEAR)
+
+    def _step_off_durable(self, here):
+        agent = self.agent
+        level = agent.current_level()
+        y0, x0 = int(here[1]), int(here[2])
+        for y, x in agent.neighbors(y0, x0, shuffle=False):
+            if level.walkable[y, x] and not agent.monster_tracker.monster_mask[y, x] and \
+                    level.objects[y, x] in G.FLOOR:
+                agent.log(f'HOLD over: stepping off our engraved Elbereth at {(y0, x0)}')
+                try:
+                    agent.move(y, x)
+                except AgentPanic:
+                    agent.search(1)
+                return
+        agent.search(1)
 
     @Strategy.wrap
     def wipe_hold_elbereth(self):
@@ -2441,15 +2507,21 @@ class DiveLogic:
         here = (agent.current_level().key(), bl.y, bl.x)
         if here not in self._hold_squares:
             yield False
+        durable = jf_config.DURABLE_ELBERETH and self._durable_sq.get(here[0]) == (int(bl.y), int(bl.x))
         engraving = (agent.inventory.engraving_below_me or '').lower()
         if engraving != 'elbereth':
             self._hold_squares.discard(here)
             yield False
         # the holds themselves run above us; don't undo a shelter that is about to be needed again
         if bl.hunger_state >= Hunger.WEAK or bl.hitpoints < ELBERETH_REST_UNTIL * bl.max_hitpoints or \
-                agent.character.prop.blind or not agent.can_engrave():
+                agent.character.prop.blind or (not durable and not agent.can_engrave()):
             yield False
         yield True
+        if durable:
+            # DURABLE_ELBERETH: dust can't wipe engraved text ('You cannot wipe out the message ...'), and the square
+            # is kept for the next hold: step off it (it stays a hold square, so this runs whenever we stop on it)
+            self._step_off_durable(here)
+            return
         self._hold_squares.discard(here)
         agent.log(f'HOLD over: wiping our Elbereth at {here[1:]}')
         agent.engrave('x')
