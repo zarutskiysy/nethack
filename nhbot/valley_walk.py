@@ -91,7 +91,8 @@ class ValleyWalker:
     # ------------------------------------------------------------------ bookkeeping (every step, no bfs)
 
     def active(self):
-        return jf_config.VALLEY_WALK and self.dive.in_valley() and not self.dive._valley_misplaced
+        return (jf_config.VALLEY_WALK or jf_config.VALLEY_DIVE) and self.dive.in_valley() and \
+            not self.dive._valley_misplaced
 
     def update(self):
         """Dive update hook (every step in the Valley): who stands where since when, graveyard squares seen

@@ -1341,7 +1341,7 @@ class DiveLogic:
                     self._valley_attackers[m.group(1) or m.group(2)] = turn
             if jf_config.VALLEY_FORT:
                 self._fort_watch()
-            if jf_config.VALLEY_WALK:
+            if jf_config.VALLEY_WALK or jf_config.VALLEY_DIVE:
                 self.walker.update()
 
         msg = agent.message
@@ -1532,6 +1532,15 @@ class DiveLogic:
         if self.diving:
             return True
         agent = self.agent
+        if jf_config.VALLEY_DIVE and self.in_gehennom():
+            # VALLEY_DIVE: a controlled jump read before the dive phase would land in the Valley with the tour still in
+            # charge (no valley_step, no walk): in Gehennom the dive owns the game
+            agent.log(f'DIVE phase starts (VALLEY_DIVE: in Gehennom at depth {agent.blstats.depth})')
+            self.diving = True
+            self.dive_start_turn = agent.blstats.time
+            self.rescue = False
+            self.mines_done = True
+            return True
         gl = agent.global_logic
         from .global_logic import Milestone
         xl = agent.blstats.experience_level
@@ -1779,6 +1788,10 @@ class DiveLogic:
                 return
             agent.search(20)
             return
+
+        # VALLEY_DIVE: below the Valley every turn goes to depth -- dig at once, else the stairs; no detours
+        if self.valley_dive_below():
+            return self.gehennom_dive_step()
 
         if dnum == Level.QUEST:
             self._task('leave quest')
@@ -6705,6 +6718,38 @@ class DiveLogic:
         level = self.agent.current_level()
         return jf_config.GEHENNOM_DIVE and level.dungeon_number == GEHENNOM and level.level_number == 1
 
+    def valley_dive_below(self):
+        """VALLEY_DIVE on a Gehennom level below the Valley (gehennom_dive_step owns the plan there)."""
+        return jf_config.VALLEY_DIVE and self.in_gehennom() and not self.in_valley()
+
+    def gehennom_dive_step(self):
+        """VALLEY_DIVE below the Valley: no Gehennom level between the Valley and the vibrating-square level is
+        hardfloor except the Wizard's Tower's three (yendor.des), so dig down at once (try_dig_down: pick-axe, else the
+        wand of digging; off the stairs, away from water), and where it can't -- no digging tool, a Tower level, the
+        vibrating-square level -- take the '>' (descend explores for it). Nothing past VALLEY_DIVE_MAX_DEPTH: Dlvl 50 is
+        the top of the progress table, so there we only wait (the survival preempts still act)."""
+        agent = self.agent
+        bl = agent.blstats
+        level = agent.current_level()
+        key = level.key()
+        seen = self.__dict__.setdefault('_gdive_logged', set())
+        if key not in seen:
+            seen.add(key)
+            tool = self.digging_tool()
+            wand = self.digging_wand()
+            agent.log(f'GDIVE on Gehennom level {level.level_number} (depth {bl.depth}) at {(int(bl.y), int(bl.x))} '
+                      f'turn {bl.time} xl {bl.experience_level} hp {bl.hitpoints}/{bl.max_hitpoints}; pick '
+                      f'{tool.text if tool is not None else None!r}, wand {wand.text if wand is not None else None!r}')
+        if bl.depth >= jf_config.VALLEY_DIVE_MAX_DEPTH:
+            self._task('gehennom: Dlvl 50 banked, waiting')
+            agent.search(5)
+            return
+        if key in self.undiggable:
+            self._task('gehennom: stairs (floor too hard to dig)')
+        else:
+            self._task('gehennom dig-dive')
+        return self.descend()
+
     def levitating(self):
         return bool(int(self.agent.last_observation['blstats'][nh.NLE_BL_CONDITION]) &
                     getattr(nh, 'BL_MASK_LEV', 0))
@@ -7872,7 +7917,8 @@ class DiveLogic:
         GEHENNOM_SCARE_UNTIL, striking what stays next to us without stepping off."""
         agent = self.agent
         castle = self._castle_scare()
-        if not castle and (not GEHENNOM_SCARE or not self.in_gehennom()):
+        scare_on = GEHENNOM_SCARE or (jf_config.VALLEY_DIVE and jf_config.VALLEY_DIVE_SCARE)
+        if not castle and (not scare_on or not self.in_gehennom()):
             yield False
         bl = agent.blstats
         level = agent.current_level()
