@@ -105,3 +105,10 @@ def apply(ident: str | None) -> dict[str, object]:
             value = {r: {int(k): int(v) for k, v in t.items()} for r, t in value.items()}
         setattr(module, attr, value)
     return applied
+
+# v10b: dev-confirmed config (held-out dev seeds, paired games on the v9p2 config)
+# Rangers on nhbot: UNSEEN_PET_GUARD off +0.022 +- 0.012 over 420 pairs (6 of 7 identities up; v8ab +0.023 on its own)
+OVERRIDES["ran"] = {"jf_config.UNSEEN_PET_GUARD": False}
+# gnomish Cavemen: the Dlvl-1 grind (an empty level map) instead of the deep grind, +0.073 +- 0.022 over 120 pairs
+# (v8ab +0.060); the other roles keep their default entries
+OVERRIDES["cav-gno"] = {"jf_config.ROLE_GRIND_LEVELS": {"Rogue": {}, "Knight": {}, "Tourist": {}, "Priest": {}, "Caveman": {}}}
