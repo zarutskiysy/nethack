@@ -1712,6 +1712,35 @@ class Agent:
                 self._prayer_model_error()
         return self.is_safe_to_pray(500) and low_hp_old
 
+    def _deep_pray_first(self):
+        """DEEP_PRAY_FIRST (jf_config): diving at depth >= DEEP_PRAY_FIRST_DEPTH outside Gehennom, HP at pray.c's
+        critically_low_hp (TROUBLE_HIT) and the prayer as safe as the old 500-turn rule (PrayerModel 'hp', never the doom
+        gamble): pray before casting healing or quaffing a healing potion."""
+        dive = self.global_logic.dive
+        if not dive.diving or self.prayer_failed or self.blstats.depth < jf_config.DEEP_PRAY_FIRST_DEPTH or \
+                self.current_level().dungeon_number == 1:
+            return False
+        if self.character.prop.polymorph or not self._critically_low_hp():
+            return False   # (a were form's low HP is only a buffer: LYCAN_FIXES)
+        if not self._prayer_model_active():
+            return self.is_safe_to_pray(500)
+        try:
+            if not self._prayer_holds_ok():
+                return False
+            return self.prayer_model.hp_decision(self.SAFE_PRAYER_P, jf_config.DOOM_MARGIN, jf_config.DOOM_MIN_P) == 'hp'
+        except Exception:
+            self._prayer_model_error()
+            return False
+
+    def _deep_pray_after_heal(self):
+        """DEEP_PRAY_FIRST: the heal's turn left us critically low with a safe prayer due -- pray now. Returning first let
+        one action of a lower strategy run before this hook fired again (agent.preempt re-runs the lower stack without
+        re-checking the hooks): mcb0 mon-hum-cha-mal__202 cast healing at 14/58 HP among Medusa-3's ravens, fell to 2,
+        and dig_first wrote a blind Elbereth instead of the prayer (gap 1124); dead the same turn."""
+        if jf_config.DEEP_PRAY_FIRST and self._deep_pray_first():
+            self._pray_reason = 'hp (DEEP_PRAY_FIRST, after a heal)'
+            self.pray()
+
     def _doom_prayer_beats_exits(self, model):
         """Exits that beat a long-shot prayer: the down stairs underfoot (the last resort takes them: they
         bank a level and shed every non-follower, dog.c:keepdogs), and a fresh dust Elbereth when everything
@@ -3178,15 +3207,24 @@ class Agent:
                 return
 
 
+        # DEEP_PRAY_FIRST: deep in the dive a safe HP prayer at critically low HP goes before the heals below
+        if jf_config.DEEP_PRAY_FIRST and self._deep_pray_first():
+            yield True
+            self._pray_reason = 'hp (DEEP_PRAY_FIRST)'
+            self.pray()
+            return
+
         # a Healer starts with healing and extra healing: cast them before potions and prayer
         if self.should_cast_extra_heal():
             yield True
             self.cast('extra healing', direction=(0, 0))
+            self._deep_pray_after_heal()
             return
 
         if self.should_cast_heal():
             yield True
             self.cast('healing', direction=(0, 0))
+            self._deep_pray_after_heal()
             return
 
         # hypothesis (astra guard.py stop list): stoning, sliming, strangling and food poisoning /
@@ -3227,6 +3265,7 @@ class Agent:
         ):
             yield True
             self.inventory.quaff(items[0])
+            self._deep_pray_after_heal()
             return
 
         items = [item for item in flatten_items(self.inventory.items) if item.is_unambiguous() and

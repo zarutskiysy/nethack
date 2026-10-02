@@ -311,7 +311,7 @@ def _toward(castle, goal, then):
     if castle._monster_at(*n):
         if not castle._tries.get('wielded'):
             castle._tries['wielded'] = 1
-            if agent.wield_best_melee_weapon():
+            if _swap_for_fight(castle):
                 return True
         castle._set_state(f'cfp: attacking what blocks {n}')
         with agent.atom_operation():
@@ -1362,7 +1362,7 @@ def cl_route_step(castle, on_foot=False, goals=None):
     if castle._monster_at(*n):
         if not t.get('wielded'):
             t['wielded'] = 1
-            if agent.wield_best_melee_weapon():
+            if _swap_for_fight(castle):
                 return True
         castle._set_state(f'cl route: attacking what blocks {n}')
         castle._step_to(*n)
@@ -1495,6 +1495,17 @@ def _adjacent_land_hostiles(castle):
     return _land_hostiles_within(castle, 1)
 
 
+def _swap_for_fight(castle):
+    """The 'real weapon' for a fight in the west maze, once after each dig (_dig clears 'wielded'): True when the wield
+    took the move. CASTLE_PICK_MELEE: not while the pick-axe/mattock in hand is about as good -- DIG_TOOL_MELEE's rule
+    (agent._keep_digging_tool_wielded: the best weapon must beat it by DIG_TOOL_MELEE_MARGIN in expected damage). Afloat on
+    a potion the swap is a turn and the next dig's apply re-wields the pick (another), out of 10-149 turns of lift."""
+    agent = castle.agent
+    if jf_config.CASTLE_PICK_MELEE and agent._keep_digging_tool_wielded():
+        return False
+    return agent.wield_best_melee_weapon()
+
+
 def _melee_adjacent(castle):
     """A hostile next to us on dry land (not the moat's eels and sharks): wield the real weapon (once after each dig)
     and hit it. True: acted. (Only while floating: on foot the usual layers fight.)"""
@@ -1507,7 +1518,7 @@ def _melee_adjacent(castle):
         return False
     if not castle._tries.get('wielded'):
         castle._tries['wielded'] = 1
-        if agent.wield_best_melee_weapon():
+        if _swap_for_fight(castle):
             _log(castle, f'wielded the melee weapon against {getattr(near[0][3], "mname", "?")}')
             return True
     _, y, x, mon, _ = near[0]

@@ -520,6 +520,11 @@ def deep_poly_escape_strategy(dive):
         if level.dungeon_number != Level.DUNGEONS_OF_DOOM or bl.depth < jf_config.CASTLE_SCARE_DEPTH:
             yield False
             return
+        if jf_config.MEDUSA_NOT_CASTLE and dive.on_medusa_level():
+            # (see MEDUSA_NOT_CASTLE) no castle moat to cross here: a new form drops armour and the digging tool, and
+            # a wand zapped from our Elbereth square erases it
+            yield False
+            return
         form = current_form(agent)
         if form is not None and crosses(form):
             yield False

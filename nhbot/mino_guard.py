@@ -155,6 +155,9 @@ class MinoGuard:
             y, x = int(y), int(x)
             if (y, x) == (int(bl.y), int(bl.x)):
                 continue
+            if jf_config.MINO_TAME and (nh.glyph_is_pet(int(agent.glyphs[y, x])) or
+                                        agent.monster_tracker.peaceful_monster_mask[y, x]):
+                continue   # MINO_TAME: the minotaur our scroll of taming turned (a pet, or peaceful at worst)
             out.append((max(abs(y - int(bl.y)), abs(x - int(bl.x))), y, x, _MINO_PERMONST))
         out.sort(key=lambda m: m[0])
         return out
@@ -172,6 +175,30 @@ class MinoGuard:
                 level.dungeon_number not in (Level.DUNGEONS_OF_DOOM, GEHENNOM):
             return False
         return True
+
+    def _castle_evidence(self):
+        """MINO_CASTLE_ZAP: the level has shown itself to be the castle before the dive recognised it -- below Medusa,
+        the castle soldiers' 'You hear a door open.' (filler mazes have no doors), or a refused dig here."""
+        dive = self.dive
+        key = self.agent.current_level().key()
+        if key in dive.undiggable or key == dive.castle.castle_key:
+            return True
+        return bool(dive.below_medusa()) and key in getattr(dive, '_door_heard', {})
+
+    def _dig_interrupter(self):
+        """MINO_DIG_GUARD: a hostile next to us (not a minotaur) whose attacks will stop the dig occupation -- an
+        Elbereth-ignorer, or any one while no intact Elbereth lies under us; None if a dig can go on."""
+        agent = self.agent
+        bl = agent.blstats
+        y0, x0 = int(bl.y), int(bl.x)
+        elbereth = not agent.character.prop.blind and \
+            (agent.inventory.engraving_below_me or '').lower() == 'elbereth'
+        for m in agent.get_visible_monsters():
+            if getattr(m[3], 'mname', '') == 'minotaur' or max(abs(int(m[1]) - y0), abs(int(m[2]) - x0)) > 1:
+                continue
+            if not elbereth or self.dive._melee_ignores_elbereth(m[3]):
+                return m
+        return None
 
     def _teleport_ok(self):
         """Teleporting within this level works: filler mazes yes; the castle, Medusa's island, the Valley and the
@@ -372,7 +399,8 @@ class MinoGuard:
         if not awake:
             # every minotaur in view is frozen by our sleep ray: out now (a frozen monster neither attacks nor
             # stops the occupation: hack.c monster_nearby !mcanmove)
-            if diggable and minos[0][0] <= MINO_RANGE and self._dig_action() is not None:
+            if diggable and minos[0][0] <= MINO_RANGE and self._dig_action() is not None and \
+                    not (jf_config.MINO_DIG_GUARD and self._dig_interrupter() is not None):
                 yield ('dig', None, f'minotaur asleep at {minos[0][0]}')
             return
         near = awake[0][0]
@@ -394,11 +422,16 @@ class MinoGuard:
             return   # (the castle's scare hold: gehennom_scare)
         adjacent = near <= 1
         consume = near <= MINO_CONSUME_RANGE or adjacent
-        # 1. a known wand of digging down
-        if diggable:
+        # 1. a known wand of digging down (MINO_CASTLE_ZAP: not where the level showed itself to be the castle)
+        if diggable and not (jf_config.MINO_CASTLE_ZAP and self._castle_evidence()):
             wand = dive._dig_wand()
             if wand is not None and dive._wand_escape(wand) is not None:
                 yield ('zapdown', wand, 'known wand of digging')
+        # 1a. MINO_TAME: a known scroll of taming with the minotaur next to us -- it never resists (MR 0)
+        if jf_config.MINO_TAME and adjacent:
+            scroll = self._scroll('taming')
+            if scroll is not None:
+                yield ('read', scroll, 'known taming, minotaur adjacent')
         # 1b. HORN_SCARE (opp_items): a scare instrument -- a tooled horn, any drum, a horn that scared before -- makes
         # every minotaur in its range flee with no timer (music.c awaken_monsters: MR 0 never resists); one that can
         # move away doesn't attack (monmove.c dochug), so while it runs the dive digs on and nothing is spent on it.
@@ -437,7 +470,8 @@ class MinoGuard:
                         yield ('step_away', spot, f'the scared minotaur is next to us: out of its reach to {spot}')
                 if can_blow and (acted or approaching):
                     yield ('horn', (scare, self._ray_dir(awake)), f'scare instrument again, minotaur at {near}')
-                if diggable and self._dig_action() is not None and not (near <= 1 and acted):
+                if diggable and self._dig_action() is not None and not (near <= 1 and acted) and \
+                        not (jf_config.MINO_DIG_GUARD and self._dig_interrupter() is not None):
                     yield ('dig', None, f'the minotaur flees (at {near})')
                 if not (near <= 1 and acted):
                     return
@@ -573,7 +607,8 @@ class MinoGuard:
         agent = self.agent
         bl = agent.blstats
         wand = dive._dig_wand()
-        if wand is not None and dive._wand_escape(wand) is not None:
+        if wand is not None and dive._wand_escape(wand) is not None and \
+                not (jf_config.MINO_CASTLE_ZAP and self._castle_evidence()):
             return ('wand', wand)
         tool = dive.digging_tool()
         if tool is None or agent.blstats.time < dive._dig_blocked_until:

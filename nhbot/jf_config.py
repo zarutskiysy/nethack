@@ -141,6 +141,17 @@ AT_ELBERETH_FIX = True
 AT_FOCUS = 10
 # with AT_ELBERETH_FIX: the dig out gives way to the fight for an ignorer this many steps away (1: adjacent only)
 AT_DIG_RADIUS = 2
+# LMINION_ELBERETH (dive_logic._melee_ignores_elbereth, elbereth_rest): lawful minions -- every A (Aleax, couatl, Angel,
+# ki-rin, Archon: M2_MINION, generated lawful) -- melee through Elbereth: monmove.c onscary returns FALSE for
+# is_lminion() before it looks at an engraving (or a scroll of scare monster). The dive counted them as scared: it
+# engraved, dug and rested on Elbereth next to them while each attack stopped the dig ('You stop digging'), and fight2
+# kept its -100 Elbereth penalty on hitting them. 29 of 1150 deduped games (fx1/b3/mcb0/v2a/tr0/p0) were killed by one:
+# 10 on Medusa-2's level (the titan's summon-nasties: couatl/Aleax), 9 mid-dive at Dlvl 12-20, 10 in the mazes and the
+# castle; 24 show Elbereth writes naming the A or 'You stop digging' in their last 25 turns (e.g. fx1
+# ran-hum-cha-mal__603: four interrupted applies under a couatl's bites, then a minotaur). With the flag they count as
+# melee Elbereth-ignorers (AT_ELBERETH_FIX fights them, the dig escape stops digging beside them) and no Elbereth rest
+# is taken next to one (CASTLE_SCARE's scroll drop is unchanged: a scroll doesn't scare them either).
+LMINION_ELBERETH = True
 # LAST_RESORT: pray at critical HP beside a hostile once this many turns have passed since the last prayer
 # (0: off; the ordinary low-HP prayer waits 500)
 # ON (train 3): castle A038 guard neutral (-0.002); harness 2 Grey-elves at 12/72 HP deaths 9/10 -> 3/10
@@ -198,6 +209,21 @@ CASTLE_POLY = True
 # and hold on the pile, striking what stays next to us (dive_logic.gehennom_scare's hold loop)
 # ON (train 3.3, power castle set; acts from depth 25 on the main line, same score in the inertness replay)
 CASTLE_SCARE = True
+# MEDUSA_NOT_CASTLE (research/deep_deaths.md): two castle-landing strategies are gated by depth alone
+# (CASTLE_SCARE_DEPTH 25), so they also act on Medusa's own level when it lies at depth 25-28: 205 of 516 Medusa
+# arrivals in the six dev tags, and one of the two fired in 73 of them (47 died there).
+#  - CASTLE_SCARE (dive_logic.gehennom_scare) drops every unknown scroll that may be scare monster when an
+#    'Elbereth-ignorer' is within 2 -- there mostly a raven or snake remembered as 'unknown' while blind, a spitting
+#    cobra or the titan -- and digs on from the pile with the pick (max_wet 8), outside the Medusa dig-square logic and
+#    WAND_RESERVE's zap (p0 wiz-hum-cha-mal__206: ~40 turns of pick digging from the pile among black nagas, a known
+#    wand of digging never zapped); the scrolls stay behind when the hole opens (lost for the castle).
+#  - CASTLE_POLY's deep escape (castle_power.deep_poly_escape_strategy) zaps a known wand of polymorph at ourselves
+#    below 60% HP (b3 val-dwa-law-fem__608: 6 self-zaps among Medusa-3's ravens in 14 turns, armour, helm, boots and
+#    the mattock dropped, dead) or gambles unknown wands at an adjacent 'unknown' or cobra from our Elbereth square
+#    ('You feel like a hypocrite. The engraving beneath you fades.': b3 ran-hum-cha-mal__602, mcb0 mon-hum-neu-mal__205).
+# castle_cross._castle_likely and power_route already exclude Medusa's level; with the flag these two do too
+# (DEEP_ITEMS keeps its own Medusa-level use of KNOWN scare monster scrolls).
+MEDUSA_NOT_CASTLE = True
 # castle: rest before/while crossing one square in from the moat, never on the courtyard's moat edge
 # ON (train 3.3, power castle set)
 CASTLE_EDGE_REST = True
@@ -374,6 +400,18 @@ LOWHP_EXACT = False
 # Validated (grind-audit bundles GA-B2/GA-B3, 270 fresh pinned games each vs cand-g, ledger R191/R196): first to fire in
 # 3 games, +0.97 / +0.81 net (jf46 s8 0.037 -> 0.507, jf49 s2 0.051 -> 0.554). Candidate value: 5.
 LOWHP_CRIT_XL = 5
+# DEEP_PRAY_FIRST (research/deep_deaths.md): agent.emergency_strategy casts healing (HP < 50%) and quaffs known potions
+# of healing (HP < 1/3) BEFORE it considers the HP prayer, so at pray.c's critically_low_hp with a safe prayer due it
+# heals 6d4 a turn (spell or uncursed potion) beside monsters that take more than that -- Monks start with 3 potions of
+# healing (u_init.c) and 1 in 3 with the healing spell. A safe prayer instead fixes TROUBLE_HIT (full HP) and its 3
+# turns are invulnerable (pray.c dopray: p_type 3 -> u.uinvulnerable). In the six dev tags 39 deaths came within 3
+# turns of a heal with a safe prayer unused (gap >= 1000, no failure), 28 of them in the dive at Dlvl 10-28 off the
+# castle, 35 of the 39 Monks (v2a mon-hum-cha-mal__203 quaffed twice at 5/56 HP beside a minotaur, prayer gap 1244).
+# With the flag, diving at depth >= DEEP_PRAY_FIRST_DEPTH (not in Gehennom, not polymorphed), critically low HP and
+# the model's safe 'hp' decision (never the doom gamble) pray before any heal. The grind keeps the old order (its
+# prayers feed it).
+DEEP_PRAY_FIRST = True
+DEEP_PRAY_FIRST_DEPTH = 10
 # TOUR_FAINT_LONG_TURNS (off: 0, grind-audit): in the tour, a Fainting spell this many turns old prays from gap
 # TOUR_FAINT_LONG_GAP instead of waiting for TOUR_FAINT_PRAYER_GAP (1600). eat.c: a faint lasts 10 - uhunger/10 turns
 # and starts on a conscious turn with rn2(20 - uhunger/10) >= 19, so deep into a spell (uhunger ~ -100) we lie fainted
@@ -689,18 +727,50 @@ MEDUSA_NO_RETREAT = True
 # crossing) and from Gehennom level 50 exactly (the top of the progress table) or the vibrating-square level when
 # shallower (teleport.c level_tele): answer 50 in those two dungeons. Only reachable with teleport control (2 of 360 recent games), so dominant and default on.
 LEVELPORT_DEEP = True
+# MEDUSA_TITAN_MSG (with dive_logic.MEDUSA_TITAN_DETECT): Medusa-2 is also recognised by a titan NAMED in a message, not only
+# by a titan glyph in view. Her arrival room (medusa.des (02,03)-(05,16)) is unlit and closed, so the 30 moat squares are
+# never seen, and its titan -- awake, speed 18 -- acts from outside the lit 3x3 ('The titan casts a spell!', 'The titan
+# throws a boulder!', 'The titan turns to flee.') a turn or more before its glyph is in view. Of ~135 Medusa-2 arrivals in
+# tr0/p0/v2a/mcb0/b3/fx1, 31 were never recognised (13 died there, 18 dug through to the castle unaware; an invisible
+# titan -- mcastu.c MGC_DISAPPEAR -- is only 'It', so this rule misses those too) and recognised ones waited up to 31
+# turns for the glyph. Meanwhile WAND_RESERVE keeps the wand of digging for 'later' (fx1 wiz-hum-neu-mal__601: 'The titan
+# hits!  The titan casts a spell at you!' on the landing turn T18964, no glyph until T18965, a horn and a scroll drop came
+# first, dead at T18966 with the wand unused) and the mazes below get no arrival zap (below_medusa() is None).
+# Both titan rules now skip a level where 'You hear a door open.' was heard: the castle (its soldiers open doors within
+# ~3 turns of every landing, CFP_SENSE), whose throne room may hold a titan -- mcb0 ran-gno-neu-mal__204 took a court
+# titan on its Dlvl-26 castle for Medusa-2, 50 turns after the landing (research/deep_deaths.md).
+MEDUSA_TITAN_MSG = True
 # a wand of wishing -> Gehennom's bottom-1 (tele_route.py): wish 1 = a ring of teleport control (worn), wish 2 = '2 cursed
 # scrolls of teleportation' (the wand is wrested for its last charge if needed), then read one anywhere in the Dungeons
 # (-> the Valley, castle+1) and one in the Valley (-> the vibrating-square level, Dlvl ~44-52: 0.78-0.81). Harness
 # lp-e2e: TC ring + a cursed scroll read on Dlvl 12 -> the Valley (Dlvl 26). Harness wr-unknown/wr2-unknown (XL 6 on Dlvl 3
 # with an unidentified wand of wishing): 12/12 into Gehennom, 10/12 to Dlvl 44-51. ON: it only acts with a wand of wishing.
 WISH_TELEPORT_ROUTE = True
+# MEDUSA_ZAP_FIRST (with DEEP_ITEMS, WAND_RESERVE): on Medusa's level DEEP_ITEMS' gambles -- an unknown horn, a bugle, a
+# scroll of taming, eyewear, a scare scroll put under the dig -- wait while dig_first's next action is the kept wand of
+# digging zapped down where we stand (zap.c zap_dig -> dighole: one action, one flood roll, gone). deep_items_strategy
+# sits above dig_first, so with a hostile pressing us it went first: fx1 wiz-hum-neu-mal__601 landed on Medusa-2 next to
+# the titan with a known wand of digging, blew an unknown horn (a horn of plenty: 'Some food spills out.') at T18965,
+# 47 -> 38 HP, dropped its scrolls (CASTLE_SCARE) at T18966 and died there, 54 -> 7 HP, the wand never zapped; mcb0
+# arc-hum-neu-fem__203 (Medusa-1), b3 cav-hum-neu-mal__605 (lenses), mcb0 wiz-hum-neu-mal__202 (a bugle) and tr0
+# mon-hum-cha-mal__202 (two taming scrolls) also played their item before the zap (research/deep_deaths.md).
+MEDUSA_ZAP_FIRST = True
 # WISH_CHARGING_FIRST (castle-front lane, research F076): a wand of wishing's first wish is '2 blessed scrolls of
 # charging'; the route's wishes then zap the wand down to (x:0), and one scroll is read on it before any wrest.
 # mkobj.c: spe = rnd(3), recharged = 0; read.c recharge(): lim 3 for wishing, a blessed charge sets spe to 3 when
 # spe < 3, and a second recharge explodes it. So c + 2 wishes instead of c: a 1-charge wand (1 in 3) got only the
 # teleport-control ring before (tele_route.py).
 WISH_CHARGING_FIRST = True
+# STALKER_ZAP_FIX (off pending an A/B; dive_logic._dig_escape_action): above Medusa, where WAND_RESERVE keeps the wand of
+# digging, its 'escape' zap at an adjacent Elbereth-ignorer is skipped when every such ignorer is next to us and M2_STALK
+# (soldiers, sergeants, lieutenants, captains, Aleax, couatl and the other 'A', Olog-hai, vampire lords): dog.c
+# keepdogs() takes an adjacent stalker along through our hole (monnear && levl_follower), so the zap moves the fight one
+# level down and costs a charge -- fight2 fights it here instead (the emergency zap below WAND_RESERVE_HP stays). 56 escape
+# zaps had an adjacent stalker in 1150 games; 35 times it was next to us again on the level below, in chains of 3-5 zaps
+# (fx1 bar-hum-neu-mal__601: one soldier followed 4 zaps on Dlvl 9-12, T8216-8218, the wand ran dry and the game died on
+# Medusa-2 at Dlvl 23 with no charge left; tr0 bar-orc-cha-mal__208: an Aleax followed 3 zaps, dead on Dlvl 14). 4 Medusa
+# arrivals had emptied their wand this way; Medusa-2 passes 81% with a wand vs 39% for pick-only non-dwarves.
+STALKER_ZAP_FIX = False
 # ROUTE_GLOVES_FIX (front-strong lane, off): cursed gloves or a welded weapon block the teleport-control ring without
 # using a move ('You cannot remove your gloves to put on the ring.'), and the route's ring step retried forever (fs7-k6
 # s9: 385k steps after the castle wand; any wand-of-wishing game with cursed gloves). Then the next wish is a blessed
@@ -1104,6 +1174,32 @@ STAIR_BOULDER_WAIT = 300
 # on a level where one was seen. cmp-main: minotaurs killed 23 of 90 games; 3 of the 7 dev-set maze deaths carried a
 # known item that ends the fight in one action (jf14 s0 genocide, jf16 s10 teleport scrolls, jf41 s13 teleport wand).
 MINO_GUARD = True
+# MINO_TAME (mino_guard; research/deep_deaths.md, maze lane): an awake minotaur next to us and a KNOWN scroll of taming
+# that isn't known cursed -> read it (after the wand of digging, before every gamble). read.c SCR_TAMING calls maybe_tame
+# on each monster within 1 square (5 confused); resist() is rn2(100 + 9 - 15) < mr and a minotaur's MR is 0, so it never
+# resists, and dog.c tamedog refuses only humans, minions, shopkeepers/guards/priests, covetous and demons: the minotaur
+# turns into a pet that fights for us, and the hole is dug in peace. The guard only ever read a taming scroll as part of
+# an UNKNOWN scroll's P(save); a Monk's starting scroll is often a known one: mcb0 mon-hum-law-mal__202 (filler maze,
+# Dlvl 23, 'd - a blessed scroll of taming') read an unknown scroll instead and died at 42/51 HP; four castle-landing
+# minotaur deaths held one too (mcb0 mon-hum-neu-mal__202, v2a mon-hum-cha-mal__207, v2a mon-hum-neu-mal__207, fx1
+# mon-hum-law-mal__603). With the flag the guard also ignores minotaurs shown as pets or peaceful (our tamed one).
+MINO_TAME = True
+# MINO_DIG_GUARD (mino_guard): the guard's 'dig out now' plans (every minotaur in view asleep from our ray; HORN_SCARE's
+# fleeing minotaur) only while nothing else next to us will stop the dig: an attack, hit or miss, ends the dig occupation
+# (mhitu.c stop_occupation), so with an Elbereth-ignorer (@, lawful minion) -- or anything, without an intact Elbereth
+# under us -- adjacent, each 'dig' is a turn of free blows, and the guard (above fight2) never lets fight2 answer it.
+# tr0 ran-gno-neu-mal__207 (filler maze, Dlvl 24): the minotaur asleep 2 squares off, a lieutenant adjacent: 'MINO dig
+# out (minotaur asleep at 2)' twice, 'You continue digging downward. The lieutenant hits! You stop digging.', 46 -> 0 HP.
+MINO_DIG_GUARD = True
+# MINO_CASTLE_ZAP (mino_guard): no zap of the wand of digging down where this level has shown itself to be the castle
+# before the dive recognised it -- below Medusa a 'You hear a door open.' (dive._door_heard: the castle's soldiers; the
+# filler mazes have no doors, CFP_SENSE: 101/101 castle arrivals vs 1/185 fillers) or a refused dig. On the castle
+# Can_dig_down is false, so the zap only digs a pit (dig.c dighole -> digactualhole PIT: u.utrap rn1(4,2), wake_nearby)
+# and holds us next to the minotaur. b3 cav-hum-neu-mal__605 ('You hear a door open.' x2, then 'MINO zapping a wand of
+# digging down' -> 'You dig a pit in the floor. The minotaur hits! The minotaur hits!'), tr0 cav-hum-law-mal__212 (the
+# same), p0 wiz-hum-cha-mal__202 (the zap after the pick's 'The floor here is too hard to dig in.'). The castle depth is
+# banked, so this keeps the wand's charges and the guard's other options for the crossing rather than score directly.
+MINO_CASTLE_ZAP = True
 # STOPPER_FIX (ledger B018, minotaur lane; off): castle_power's deep escape picks the unknown wand to zap at an
 # Elbereth-ignorer by what its possible types would do to THAT monster (resistances: sleep, cold/fire/shock, death vs
 # undead/demons/nonliving; the MR roll for sleep/polymorph/slow) net of the chance a ray bounces back onto us; no wand
@@ -1203,6 +1299,15 @@ TENGU_CORPSE_AGE = 25      # a tengu corpse older than this is left (CORPSE_MAX_
 # the trap door's Valley (0.691). Budgets 240 actions / 400 turns, HP >= 45%. Their ascension wish list is not
 # imported (it switched our teleport route off).
 CASTLE_TREASURY = True
+# CASTLE_PICK_MELEE (castle_cross._swap_for_fight; off pending a lift-suite A/B, research/deep_deaths.md castle section):
+# the castle's floating fights in the west maze (castle_cross._melee_adjacent, cl_route_step and _toward's blockers) wield
+# the 'best' melee weapon once after every dig, and the next dig's apply wields the pick again: two moves per interruption
+# out of a potion's 10-149 turns of lift (potion.c rn1(140, 10)). 30 of 227 castle arrivals got a lift (fx1/b3/mcb0/v2a/
+# tr0/p0); 11 of them swapped 19 times, e.g. fx1 pri-elf-cha-mal__601: a dwarf, a pyrolisk, a wood nymph and a housecat
+# interrupted its boulder dig at (-2,12) four times (30 turns), the minotaur came at +71 before the moat. With the flag
+# the swap follows DIG_TOOL_MELEE's rule (the best weapon must beat the pick by DIG_TOOL_MELEE_MARGIN in expected
+# damage: Excalibur and two-handers still come out). Sea-monster fights (castle_logic._wield_weapon, CFP_DUEL) unchanged.
+CASTLE_PICK_MELEE = False
 
 # ROBUST_FIXES2 (off, robustness-audit lane): stalls found by a census of the botlogs of 5456 unique dev games
 # (1047 of them since s23; $SCR/robust). Each piece acts only where the old code asserted or spun without a turn.
@@ -1378,6 +1483,17 @@ RAVEN_GAP_MAX = 12
 # cold (4%) says 'ice cubes' -- the flood-reducers that lift Medusa-3 in the harness (charging an empty wand of digging
 # 18 -> 34 of 49, a frost horn 21 -> 33 of 49). Small (~1 flood-reducer per 270 games), cheap.
 DEEP_WAND_TEST = False
+# MEDUSA_STRANDED_REROLL (research/deep_deaths.md): a flood can leave the digger on Medusa's '<' (or on a patch with no
+# square that can be dug: stairs, flooded or refused squares): _dig_max_wet() is None, 'stranded'. The reroll (climb,
+# dig down beside the '>' above, fall onto a fresh square of the arrival region) skipped Medusa-3 altogether, so the
+# dive stood on the '<' searching ("DIVE no progress in task 'descend': targets=[]") until the ravens wore it down: 6 of
+# 152 Medusa-3 arrivals in fx1/b3/mcb0/v2a/p0/tr0 (b3 arc-dwa-law-fem__609 430 turns, p0 pri-elf-cha-mal__207 1650,
+# b3 wiz-elf-cha-mal__603 340, fx1 bar-orc-cha-mal__601 850), 5 died there. And a climb off that '<' (the Elbereth
+# rest's retreat, KNOWN_ITEMS' climb) came back down the same stairs onto the same isolated square (b3
+# arc-dwa-law-fem__609 twice). With the flag a stranded dive rerolls on Medusa-3 too (up to MEDUSA_STRANDED_REROLLS
+# climbs), and after any climb off a stranded '<' the '>' above stays closed, so the dive digs back down.
+MEDUSA_STRANDED_REROLL = True
+MEDUSA_STRANDED_REROLLS = 6
 
 # ---------------------------------------------------------------------------------------------------------------
 # dive-audit lane (2026-09-30; ledger F092): a death-by-death review of cand-g's 53 fresh deaths at max depth 5-20
@@ -1438,6 +1554,13 @@ SHOP_DIG_AFTER = 300
 # soldier ant, 63 -> 0 HP (replay: 0.206 -> 0.507); 5 of 270 games were killed while hallucinating. The first version
 # also blocked it while stunned (1 in 4 per letter, ~7% whole): 30 stunned blocks in da-all2's 270 games, no gain.
 ELBERETH_FUTILE = True
+# PYTHON_HOLD (research/deep_deaths.md): a python's AD_WRAP drowns us exactly like an eel's when it holds us from a pool
+# (mhitu.c AD_WRAP: u.ustuck and is_pool at the holder -> 'drowns you'), and Medusa-4's 14 random S often include
+# pythons that swim. ESCAPE_V2's hold escape (Elbereth at once: a scared holder lets go, monflee -> release) matched
+# only 'eel|kraken', so a held digger kept trying to walk ('You cannot escape from the python!', hack.c u.ustuck: 7.5%
+# per try): b3 ran-hum-cha-mal__603 three such tries, fx1 mon-hum-neu-mal__602, mcb0 mon-hum-cha-mal__204 -- 3 of 59
+# Medusa-4 deaths 'drowned in a pool of water by a python'. With the flag the escape takes pythons too.
+PYTHON_HOLD = True
 
 # FORCE_BOLT (fight_heur.force_bolt_actions, eL1fe's port of CleverShovel 0d1fb22): cast force bolt in fights
 FORCE_BOLT = True
