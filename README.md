@@ -7,7 +7,7 @@ The repository root is the solution: `bot.py` exposes `make_agent()` (the hub's 
 - `nhbot/` — the main engine, an AutoAscend descendant forked from daglar-dragomirov/nethacker's `pf_s25p`
   (vkurenkov's "jawfish" s25 line); MIT, see `LICENSE`.
 - `pf_hg/`, `pf_hh/`, `pf_pa/`, `pf_v35/`, `pf_v25/` — specialist engines from the same lineage, routed per identity
-  in `bot.py` (Healers, human Priests, Samurai), as in daglar-dragomirov/nethacker@e29eb82.
+  in `bot.py` (Healers, Samurai), as in daglar-dragomirov/nethacker@e29eb82 (`pf_pa`, `pf_v25`: no longer routed).
 - `roles.py` — per-identity overrides of engine settings.
 - `tools/` — evaluation helpers (not used by the bot): `sweep.py` (official `nethackers eval` over identities),
   `devrun.py` (native or in-container runs on held-out seeds with death diagnostics), `devcmp.py` (paired A/B
