@@ -2087,6 +2087,37 @@ MISSILE_RECOVER = False
 MISSILE_RECOVER_DIST = 6
 MISSILE_RECOVER_RANGE = 8
 MISSILE_RECOVER_TURNS = 300
+# STAIR_ESCAPE (dive_logic.retreat_upstairs, _escape_down_target, _post_prayer_engaged; research/middive.md): mid-dive
+# deaths (Dlvl 10-20, ~27% of the current-code dev games that reach Dlvl 10) are bursts -- a median 5-6 turns from 80%
+# HP to dead -- and 58% of the answered HP prayers at Dlvl 10-20 (166 of 286) were followed by death within 40 turns
+# (median 8): the prayer refills HP, the fight goes on, and the next crisis has no prayer. Two changes, both only while
+# diving on the Dungeons of Doom main line from STAIR_ESCAPE_MIN_DEPTH, above Medusa's level:
+#  - the retreat also takes a '>' (STAIR_ESCAPE_DOWN; preferred unless a '<' is STAIR_ESCAPE_DOWN_SLACK steps closer):
+#    it banks a level (score = deepest level) and leaves behind everything that does not follow -- only an adjacent
+#    M2_STALK monster changes level with us (dog.c keepdogs: monnear && levl_follower) and elves, soldier ants, wolves,
+#    leocrottae, jaguars and vortices are not stalkers. Never onto Medusa's level (below MEDUSA_MIN_DEPTH while she is
+#    unknown); the '<' we arrive on is not climbed back for STAIR_ESCAPE_NO_BOUNCE turns (the last resort still may).
+#  - for STAIR_ESCAPE_PRAYED turns after an answered prayer, an Elbereth-ignorer within 3 (or HP back below
+#    STAIR_ESCAPE_PRAYED_HP with a hostile within 3) sends us to any staircase within STAIR_ESCAPE_REACH steps.
+# Final screens of the 437 mid-dive deaths: a '>' within 12 squares in 62, a '<' in 78.
+STAIR_ESCAPE = False
+STAIR_ESCAPE_DOWN = True
+STAIR_ESCAPE_DOWN_SLACK = 2
+STAIR_ESCAPE_MIN_DEPTH = 5
+STAIR_ESCAPE_NO_BOUNCE = 20
+STAIR_ESCAPE_PRAYED = 40
+STAIR_ESCAPE_PRAYED_HP = 0.75
+STAIR_ESCAPE_REACH = 15
+# AT_STAIRS (dive_logic._at_stairs_plan; needs no other flag): an Elbereth-ignoring meleer (elf, soldier, other @,
+# minotaur, A) in view within AT_STAIRS_RADIUS steps while we are hurt (or two of them), not yet in our pit, and a '>'
+# we reach while it is still >= 2 steps away and that is no nearer to it than to us: take the '>' instead of digging.
+# A pit blinds us to all but the adjacent squares (vision.c: u.utrap TT_PIT) for the ~20 turns a non-dwarf needs to
+# hole the floor, and every attack stops the dig (mhitu.c stop_occupation): levels where such a monster was in view
+# when the dig began killed 31 of 104 diggers (quiet levels 0.9%). Unlike AT_THREAT_AVOID (-0.004 on dev) it never
+# holds the dig: it acts only when a '>' is closer than the monster.
+AT_STAIRS = False
+AT_STAIRS_RADIUS = 8
+AT_STAIRS_MEMORY = 6                # turns a started walk to the '>' goes on with the @ out of view/range
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
