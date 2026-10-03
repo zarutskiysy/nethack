@@ -29,7 +29,7 @@ SPECIALISTS = {
     # v9p2: the e29-family engines beat four verified runs of nhbot here as well (one verified sample each)
     "arc-hum-neu": "adapter_pf_s25p8",        # e29/pf_s25p 0.360/0.380 vs nhbot 0.31-0.33
     "bar-orc": "adapter_pf_s25p8",            # e29/pf_s25p8 0.45-0.48 vs nhbot 0.36-0.41
-    "wiz-hum-neu": "adapter_pf_vk_s25",       # verified 0.125 here (nhbot 0.12-0.15); dev audit pending
+    "wiz-hum-neu": "adapter_pf_s25p8",        # dev 90 seeds: pf_s25p8 0.252 > nhbot 0.214 > pf_vk_s25 0.153; verified e29 ~0.25 vs pf_vk_s25 0.125
 }
 
 
