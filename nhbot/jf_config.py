@@ -1760,6 +1760,44 @@ HEA_QUAFF = False
 HEA_QUAFF_FRAC = 0.5
 HEA_QUAFF_PDIE = 0.25
 
+# Wizard kit lane (wiz_kit.py, research/wiz_kit.md; role-gated: WIZ_KIT_ROLES in code, OVERRIDES['wiz'] in roles.py).
+# g0w (500 current-code Wizard dev games): the starting wand is never used in the grind (fight2: rays only, none while
+# force bolt is castable; KNOWN_ITEMS: dive only, at critical HP) -- 46 of 180 Dlvl-20+ dumps still held the starting
+# attack wand with 4.6 charges; 225 games (45%) died in the grind, ~100 of them in melee at XL 5-7.
+# WIZ_WAND_FIGHT: when the awake hostiles' melee kills us within WIZ_WAND_TURNS turns with P >= WIZ_WAND_PDIE, zap the
+# known wand (sleep / death / teleportation; fire / cold / lightning / magic missile / striking) or cast the sleep spell
+# (WIZ_SLEEP_SPELL) along the line that removes >= WIZ_WAND_MIN_SHARE of that damage; rays never where our own ray comes
+# back (P > WIZ_WAND_SELF_P) unless it can't hurt us; a damage wand waits for WIZ_WAND_PDIE_BOLT while force bolt is
+# castable; the grind's last WIZ_WAND_RESERVE charges wait for WIZ_WAND_PDIE_LAST. Sleepers are meleed.
+WIZ_KIT_ROLES = ('Wizard',)   # role names the lane acts for (None: every role)
+WIZ_WAND_FIGHT = False
+WIZ_SLEEP_SPELL = True        # with WIZ_WAND_FIGHT: the sleep spell (a random second book, 7% of Wizards) counts too
+WIZ_WAND_TURNS = 3
+WIZ_WAND_PDIE = 0.2
+WIZ_WAND_PDIE_BOLT = 0.5
+WIZ_WAND_PDIE_LAST = 0.5
+WIZ_WAND_RESERVE = 1
+WIZ_WAND_RANGE = 5            # the farthest target on a line
+WIZ_WAND_MIN_SHARE = 0.4
+WIZ_WAND_SELF_P = 0.03
+# WIZ_SPEED_SELF: zap a known wand of speed monster at ourselves once, out of a fight (zap.c zapyourself: intrinsic
+# Fast); the 9 Dlvl-20+ dumps with one had never zapped it
+WIZ_SPEED_SELF = False
+# WIZ_KIT_BOOST: out of a fight, quaff known non-cursed WIZ_BOOST_POTIONS and read a known non-cursed scroll of enchant
+# armor while every worn piece is +3 or less (Dlvl-20+ dumps: 11 gain level, 22 gain energy, 21 gain ability, 11
+# enchant armor carried unused)
+WIZ_KIT_BOOST = False
+WIZ_BOOST_POTIONS = ('gain level', 'gain energy', 'gain ability')
+# WIZ_RING_SAFE: above the ring module's MAX_DEPTH and out of a fight, put an always-wear ring (ring_amulet_config's list
+# + WIZ_RING_EXTRA) back on when it is off and we are not Weak (the dig-dive never runs gather_items, and the hunger
+# shedding's put-back matched the inventory text '(on left hand)': 14 of 64 such rings were worn at Dlvl 20+); wear a
+# known ring of regeneration below WIZ_REGEN_ON of max HP, take it off at WIZ_REGEN_OFF or when Weak
+WIZ_RING_SAFE = False
+WIZ_RING_EXTRA = ('stealth',)
+WIZ_REGEN_ON = 0.5
+WIZ_REGEN_OFF = 0.95
+WIZ_RING_RETRY = 20           # turns before the same ring is put on / taken off again
+
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():

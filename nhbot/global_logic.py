@@ -16,6 +16,7 @@ from . import castle_landing
 from . import mino_guard
 from . import known_items
 from . import hea_kit
+from . import wiz_kit
 from . import opp_items
 from . import tele_route
 from . import power_route
@@ -291,6 +292,7 @@ class GlobalLogic:
         self.mino = mino_guard.MinoGuard(self.dive)   # jf_config.MINO_GUARD (minotaur lane)
         self.known = known_items.KnownItemsGuard(self.dive, self.mino)   # jf_config.KNOWN_ITEMS (dive-audit)
         self.hea = hea_kit.HeaKitGuard(self.dive, self.mino)   # jf_config.HEA_SLEEP_ZAP / HEA_QUAFF (Healer kit lane)
+        self.wiz = wiz_kit.WizKitGuard(self.dive, self.mino)   # jf_config.WIZ_WAND_FIGHT / WIZ_RING_SAFE ... (Wizard kit)
         # Knight only (kni_steed.py): feed the saddled pony so hunger never turns it on us
         self.steed = SteedKeeper(agent)
 
@@ -1200,6 +1202,13 @@ class GlobalLogic:
             # the dive, above KNOWN_ITEMS (whose potion went before the wand) and the emergency, below the minotaur lane
             .preempt(self.agent, [
                 self.hea.strategy(),
+            ])
+            # Wizard kit lane (WIZ_WAND_FIGHT / WIZ_SPEED_SELF / WIZ_KIT_BOOST / WIZ_RING_SAFE, wiz_kit.py; off by default):
+            # the starting wand (or the sleep spell) along the line that removes most of a deadly melee, the sleepers
+            # then killed; out of a fight a speed-monster self-zap, gain potions / enchant armor, the always-wear rings
+            # back on and regeneration while hurt -- in the grind and the dive, next to the Healer lane
+            .preempt(self.agent, [
+                self.wiz.strategy(),
             ])
             # minotaur lane (MINO_GUARD, mino_guard.py): a minotaur in view -- a known way out first (digging down, the
             # up stairs, teleport/sleep/polymorph at it, teleport ourselves, genocide, scare monster), then gambles;
