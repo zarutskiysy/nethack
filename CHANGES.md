@@ -104,3 +104,8 @@
   HP, or after PT_FARM_STALL turns without experience; on the walk to the tune square a land hostile next to us hands
   the step to the survival layers (no digging under its blows); the walk gives up after PT_GO_TURNS; a hand-over
   after a quiet crusher skips FRONT_V3's maze-mouth hold. Tests (fakes): `python tests/test_castle_lane_v2.py`.
+
+- **ports3** (unrouted specialists for dev audits, `research/competitor_scan2.md` N4-N6; `bot.SPECIALISTS` unchanged):
+  `pf_cs911` (CleverShovel 911c949 pf_base, their wiz-hum-neu engine), `pf_dt284` (DT6A f284bd2 jawfish, their
+  hea-hum/tou engine), `pf_s25p8m` (pf_s25p8 + daglar 50fa3c4's MINES_TOOL_TRIP line in `use_mines`). nhbot:
+  `INV_FULL_LIST` (off; vkurenkov 4921bc3): a container check that raises mid-parse no longer leaves the item list cut.
