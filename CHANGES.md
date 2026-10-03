@@ -70,3 +70,12 @@
   (`roles.attributes_identity`, so the per-role config applies even when the welcome line is missed), and the Tourist
   engine `pf_dtad7a` (DT6A/nethacker@ad7a864) routed for `tou`. The `RING_MODULE`/`MEDUSA_HOP` module code is
   byte-identical to daglar's, so this reproduces the leader's behaviour exactly, with v4's extra fixes on top.
+
+- **vk-castle (all OFF)**: a port of vkurenkov/nethacker s26 (4921bc3, MIT, AutoAscend lineage) castle work behind
+  default-off switches: `castle_crusher.py` + `passtune.py` (PASSTUNE_CRUSHER: the drawbridge tune by Mastermind,
+  then the bridge as a crusher), `castle_inner.py` (CASTLE_INNER: the walk from inside the shell to the tower chest's
+  wand of wishing; LIFT_EAST_DROP), the landing lane (LANDING_CRUSH_FIRST / LANDING_DIRECT / LANDING_ROUTE /
+  LANDING_FOCUS), route fixes (CASTLE_ZAP_RECOGNIZE, XORN_STAIRS_NOTE, POLY_RESUME, EAST_LATE_DOOR, WISH_ROUTE_FIRST,
+  INV_FULL_LIST, PREEMPT_SAFE's castle parts) and the wish route's T_ROUTE_FIRE / T_ROUTE_EARLY_CHARGE / T_ROUTE_TOP /
+  ROUTE_ELBERETH / ROUTE_RING_SWAP / WISH_PRAYER_HOLD. Not ported: castle_poly, supply/shop buying, wish_source
+  (lamps, thrones), id_engine, MATTOCK_SHIELD, Medusa re-entry. Tests: `tests/test_vk_castle.py`.

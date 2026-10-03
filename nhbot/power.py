@@ -256,6 +256,8 @@ _WISH_GOT = re.compile(r'(?:^|\s)([a-zA-Z]) - ((?:an?|\d+) [^.]+?)\.(?=\s|$)')
 def note_wish(agent, text):
     """WISH_LEARN: the wish prompt was answered with `text` (agent.update); learn_wished names the result."""
     tele_route.note_asked(agent, text)
+    if jf_config.WISH_PRAYER_HOLD:
+        agent._wish_timeout = (agent.wish_prayer_timeout() + 100, agent.blstats.time)
     if jf_config.WISH_LEARN:
         agent._wish_pending = (WISH_OBJECTS.get(text), text, agent.step_count)
 

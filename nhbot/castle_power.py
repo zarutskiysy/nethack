@@ -22,6 +22,7 @@ from nle.nethack import actions as A
 
 from . import jf_config, power
 from . import objects as O
+from .exceptions import AgentChangeStrategy
 
 M1_FLY, M1_SWIM, M1_AMPHIBIOUS = 0x1, 0x2, 0x200
 M1_NOHANDS, M1_NOLIMBS, M1_SLITHY = 0x2000, 0x6000, 0x80000
@@ -103,9 +104,20 @@ def _engrave_test(passage, item):
     im = inv.item_manager
     old = getattr(agent, 'wish_purpose', None)
     agent.wish_purpose = 'passage'
+    types = None
     try:
         with agent.atom_operation():
             types = inv._engrave_single_wand(item)
+    except AgentChangeStrategy:
+        # F362: raised by the preempt checks at the END of the block, i.e. the test is done (35 of the 112 real castle kits of
+        # the PREEMPT_TRACE census were cut here, rush_strategy mostly; 1 completed): its result is booked before the strategy
+        # that took over runs, else the wand is untested again and the castle plan never learns what it can do
+        if jf_config.PREEMPT_SAFE and types is not None:
+            im._glyph_to_possible_wand_types[item.glyphs[0]] = types
+            im._already_engraved_glyphs.add(item.glyphs[0])
+            im.possible_objects_from_glyph(item.glyphs[0])
+            passage._log(f'power: engrave-tested {item.text!r}: {[o.name for o in types]} (booked after a preemption)')
+        raise
     finally:
         agent.wish_purpose = old
     if types is None:
@@ -199,6 +211,10 @@ def arrival_step(passage):
                     return True
         # (scrolls that may be scare monster are dropped only when an Elbereth-ignorer closes in: CASTLE_SCARE,
         # dive_logic.gehennom_scare -- dropped here at the landing they stayed behind when we moved on)
+    if jf_config.LANDING_CRUSH_FIRST:
+        from . import castle_cross
+        if castle_cross.crusher_first(passage.dive):
+            return False   # LANDING_CRUSH_FIRST: no lift tests before the crusher (the wand engrave tests above stay)
     cfp_wait = False
     if jf_config.CFP_RUSH:
         # castle-first-pass: the kit's own lasting lifts and the magical-breathing water test go first; a big form
@@ -251,6 +267,10 @@ def arrival_step(passage):
         # 4. the lasting lifts of the passage plan right here instead of after the walk through the maze (a
         # potion's 10-149 turns of levitation are kept for the moat: castle_logic quaffs them by the corner)
         plan = passage._plan()
+        if plan and not passage._resting and jf_config.LANDING_QUIET_TESTS:
+            from . import castle_cross
+            if castle_cross._land_hostiles_within(passage, 2):
+                plan = None   # LANDING_QUIET_TESTS: no lift test with a monster within 2 squares
         if plan and not passage._resting:
             kind, item = plan[0]
             # known lifts are castle_logic's (it rests first); the drill tests unknown ones where we land (a known

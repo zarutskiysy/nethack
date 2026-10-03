@@ -1737,6 +1737,449 @@ AT_THREAT_STILL = 4                 # turns an @ in view may stay no closer befo
 AT_THREAT_MAX_HOLD = 40             # holding turns per level, at most
 AT_THREAT_WAND_XL = 10              # the kept wand of digging is spent on an @ below this XL (or at half HP)
 
+# =====================================================================================================================
+# vk_castle port (branch vk-castle): vkurenkov/nethacker s26 4921bc3's castle modules -- castle_crusher.py + passtune.py
+# (PASSTUNE_CRUSHER: the drawbridge passtune by Mastermind, then the bridge as a crusher), castle_inner.py (CASTLE_INNER:
+# the walk from inside the shell to the tower chest's wand of wishing), the landing lane (LANDING_*), and the route
+# fixes (LIFT_EAST_DROP, CASTLE_ZAP_RECOGNIZE, XORN_STAIRS_NOTE, POLY_RESUME, EAST_LATE_DOOR, WISH_ROUTE_FIRST,
+# INV_FULL_LIST, PREEMPT_SAFE's castle parts). The comments below are vk's own (ledger ids, harness runs and 'ON'
+# notes refer to THEIR measurements on Valkyrie castle kits); every master switch is OFF here and the sub-parameters
+# keep vk's shipped values, so with the switches off the bot plays exactly as before. research/vk_castle.md has what
+# applies to our arrivals and the A/B arm.
+# =====================================================================================================================
+# PASSTUNE_CRUSHER (ON; castle-redteam lane, ledger F104, castle_crusher.py + passtune.py): a castle kit that carries a
+# tonal instrument (horn, flute, harp, bugle -- 7 of 105 true castle kits) learns the drawbridge's passtune by
+# Mastermind (music.c: the span (05,08) in our 3x3, feedback 'N tumblers click and M gears turn'; passtune.Solver ~5.2
+# plays, max 7) from (04,07)/(04,09) on Elbereth, then toggles the bridge: closing it kills every non-flyer, non-
+# wall-walker on the span or the portcullis (dbridge.c do_entity: drowned or crushed, the kill is ours), opening it
+# crushes whatever swims under the span. From that square nothing inside is in line with us and the @ soldiers must
+# stand on the span to reach us (speed 10 vs our 12-16: we close first). Once quiet, in along row 08 (FRONT_V3's
+# walk-in; a lure back to the crusher when 2+ come): castle 29 -> the secret door (38,08) -> trap door (40,08); other
+# depths -> a tower chest's wand of wishing, named by one zap for WISH_TELEPORT_ROUTE. Runs above the crossing: at a
+# castle on 25-28 a lift gives one level, the tower wand a pass.
+PASSTUNE_CRUSHER = False   # vk_castle port: OFF here (vk s26 4921bc3 ships True)
+PASSTUNE_MAX_PLAYS = 25        # Mastermind plays before giving up
+PASSTUNE_REST_HP = 0.5         # below this share of HP: close the bridge, rest on Elbereth on the crusher square
+PASSTUNE_RESUME_HP = 0.8       # ...up to this share, then open it again
+PASSTUNE_QUIET = 100           # game turns with nothing on (or dying on) the bridge before we walk in...
+PASSTUNE_MAX_SPELL = 800      # ...or this many turns at the crusher in one spell (the court and the woken barracks
+                              # keep trickling out: harness rt-smoke1 s1 crushed 62 in 1500 turns, never quiet)
+PASSTUNE_MAX_STEPS = 3000      # crusher-phase steps at most
+PASSTUNE_C29_TRAPDOOR = True   # castle 29: the trap door (40,08) beyond the secret door; else the tower wand
+PASSTUNE_LURES = 12           # times the walk in turns back to the crusher for 2+ crushable monsters in view
+PASSTUNE_PULL = False         # after the first quiet, one more spell from (04,08) on row 08 (rt-a1c/a2c: +0-6 kills, a
+                              # shark death at (04,08), passes 3/20 and 2/20 vs 4 and 2 without: off)
+PASSTUNE_LOCKOUT = True       # close the bridge behind us from (07,08) on the way in
+# PASSTUNE_SCARE_WALKIN (off; crusher-walkin lane, for PASSTUNE_CRUSHER): in the throne room (past the lock-out,
+# where there is no way back to the crusher square), a known scroll of scare monster is dropped before fighting an
+# Elbereth-ignorer (@ or minotaur) -- monmove.c onscary checks a scroll on our square BEFORE the human/minotaur
+# exclusions (F104), so it keeps a soldier or sergeant off us the same way Elbereth keeps the rest of the court off.
+# Evidence: R217's cand-k full games -- both real walk-ins (castle 25, full HP) died to one 9 and 42 turns after
+# entering the throne room, with no defence in that spot but the blow. See crusher-walkin's harness numbers below
+# before turning this on.
+PASSTUNE_SCARE_WALKIN = False
+
+# --- castle-gate lane (2026-10-01 readiness program; harness census: dev/census.py JF_CENSUS, runs cg-*) ---
+# PASSTUNE_SWEEP (off; for PASSTUNE_CRUSHER): the lure train. What the crusher leaves alive for the walk-in is not the
+# court's trickle: (a) most castles wake their 36 barracks soldiers (a lich/demilich in the court casts the undirected
+# spell AGGRAVATE MONSTER every move within 7 squares of us, mcastu.c MGC_AGGRAVATION + monmove.c dochug; 62 of 75 castle-
+# crush-a games show 'You feel that monsters are aware of your presence', ledger F313/F318) and a court giant smashes the
+# barracks doors; greedy m_move keeps the army jammed on the barracks' WEST wall while we stand at (04,07) and releases
+# it the moment we are east of x=26 -- 21 of the 47 baseline walk-in deaths (112 real kits, runs/cg-kcrush-base) were
+# @ soldiers in the first turns inside the throne room; (b) M2_COLLECT/JEWELS court monsters (ogres, trolls, giants,
+# ettins) stick at the throne room's east wall for hundreds of turns, drawn by the storerooms' objects behind it (F317).
+# So when the quiet test passes (garrison dead) the hero walks along row 08 to the throne room's first square (27,08) --
+# bridge still DOWN -- looks, and as soon as a hostile castle monster is within PASSTUNE_SWEEP_RANGE (or closing in) runs
+# back (speed ~16 vs the soldiers' 10) to (04,07); the crush loop kills the whole train on the span/portcullis, then the
+# next sweep (up to PASSTUNE_SWEEPS). The bridge is closed behind the hero at (07,08) on the way out (SEAL: a west-bank
+# minotaur/@ cannot follow him in) and re-opened there on the way back. A sweep that finds nothing coming for
+# PASSTUNE_SWEEP_WAIT turns is the verified quiet that replaces the 100-turn timer: the hero stays sealed in at (27,08) and
+# the hand-off to castle-inner is made from there ('CRUSH M:handoff'; locked_out is True, the bridge is up).
+PASSTUNE_SWEEP = False
+PASSTUNE_SWEEPS = 8            # trains at most
+PASSTUNE_SWEEP_RANGE = 6       # a hostile castle-side monster this close (Chebyshev) to the hero starts the run back
+PASSTUNE_SWEEP_QUIET = 25       # quiet turns (no kill, nothing on the bridge) before the FIRST sweep, once the garrison is dead (hazard at the crusher square is ~8% of games per 100 turns after T+100, and a 1100-turn session starves)
+PASSTUNE_SWEEP_QUIET_TRAIN = 45 # ...and before each later one: the last train's stragglers are still walking in (sweep 2 of a smoke met them in the antechamber: 80 -> 25 HP in 7 turns)
+PASSTUNE_SWEEP_START_HP = 0.9  # HP share a sweep needs to leave (the crusher loop's own resume level is 0.8)
+PASSTUNE_SWEEP_WAIT = 8        # turns at (27,08) with nothing coming before the room counts as quiet
+PASSTUNE_SWEEP_REST = 0.9        # sealed in at (27,08) with nothing coming: rest on Elbereth to this share of HP before the hand-off
+PASSTUNE_SWEEP_REST_TURNS = 250  # ...for at most this many turns from the start of the wait
+PASSTUNE_SWEEP_HP = 0.6        # below this share of HP a sweep turns back to rest at the crusher square
+PASSTUNE_SWEEP_STEPS = 160     # steps one sweep may take before it is given up
+PASSTUNE_SWEEP_SEAL = True     # close the bridge behind us at (07,08) on the way out (west-bank pursuers cannot follow), re-open it there on the way back
+# PASSTUNE_FOUNTAIN_STEP (off): the antechamber's fountain (10,08) is on the walk-in's row and cannot hold an Elbereth (engrave.c
+# doengrave: 'You can't write on the fountain!'); a hero that stops there with a monster within 2, hurt, or hurt in the
+# last 3 turns steps to a free neighbour first. Evidence: sweep smoke jf90-s8 (xorn, 8 hits on the fountain), 4 more
+# games with the message, ledger F326.
+PASSTUNE_FOUNTAIN_STEP = True
+# PASSTUNE_TRICK (off): the bridge as a minotaur trap. The maze's minotaur (19 of the 112 baseline kits died to one at the crusher
+# square, 8 of them later than T+45, i.e. after the garrison was dead) and random Elbereth-ignoring @ (elf-lords, Woodland-
+# elves, T+7..T+60) walk straight up to a hero standing on the west bank, Elbereth or not (monmove.c onscary). With the
+# garrison crushed and the bridge down, a pest first seen 3..7 squares away makes the hero walk over the span to (07,08);
+# m_move heads for us across the bridge, and the tune closes it on the span or the portcullis (dbridge.c do_entity:
+# every non-flyer, non-wall-walker there dies). Then the bridge is re-opened from (07,08) (the sweep's 'return').
+PASSTUNE_TRICK = False
+PASSTUNE_TRICKS = 3            # tricks at most
+PASSTUNE_TRICK_TURNS = 25      # turns one trick may take before it is given up
+# PASSTUNE_DOORS (off; needs PASSTUNE_SWEEP and a digging tool): the second kind of train. After a quiet look the 7-8 tower guards
+# (@, soldiers: they ignore Elbereth) are still behind the locked doors (32,04)/(32,12), pressing toward us in the 1-wide
+# hallways; the walk-in meets them one by one with no way back (@ soldiers killed 21 of 47 baseline walk-ins). Sealed in at
+# (27,08) the hero digs each door open from the square under it (pick-axe: silent, a dwarf breaks it in ~4 turns; no kick: a
+# kick wakes the barracks, dokick.c wake_nearby), on an Elbereth, waits PASSTUNE_DOOR_WAIT turns for the guards, and runs
+# back to the bridge with them behind it, exactly like a sweep.
+PASSTUNE_DOORS = False
+PASSTUNE_DOOR_WAIT = 30        # turns under an open door waiting for the guards (they walk ~20 squares from the hallway's west end)
+PASSTUNE_DOORS_ARMY = False       # ...also on a side whose barracks door is open: the first visit under the door releases the awake army (about 15-30 soldiers
+                              # file out along row 05/11 toward the hero and he runs the 25 squares to the bridge with them behind him: the first soldier or two
+                              # reach him near the exit (a pincer at (27..28,07)), speed 10 vs his 16; est. 30 HP)
+
+# PASSTUNE_TAME_CONF (off; castle-gate, ledger I312 item 5): a CONFUSED scroll of taming is an 11x11 area effect (read.c SCR_TAMING:
+# bd = confused ? 5 : 1, m_at() in the box, no line of sight): every monster inside that fails resist() is tamed, a human
+# (soldiers, MR 0) made peaceful (dog.c tamedog sets mpeaceful before its is_human refusal), xorns (MR 20) 4 in 5. At the crusher
+# square at crush_over the box holds 1.6 xorns, 2.3 @, 3 sea monsters on average (census, runs/cg-x4-base, boxcount.py).
+# Needs a KNOWN scroll of taming (not cursed) and a KNOWN potion of confusion or booze in the pack: quaffs, reads the next turn,
+# waits the confusion out on the Elbereth (a confused hero only improvises: no tune). One use per game, at the quiet decision.
+PASSTUNE_TAME_CONF = True
+# PASSTUNE_TAME_MINO (off): the same quaff + confused read, but at once when a hostile minotaur is in view within 7 squares
+# (the maze minotaur kills 19% of the base games before crush_over; Elbereth does not stop it; MR 0, so the scroll tames it
+# for certain if it is inside the box). The go is spent: nothing is left for the quiet decision.
+PASSTUNE_TAME_MINO = True
+# PASSTUNE_PET_GUARD (off; for PASSTUNE_TAME_CONF/MINO): no bridge toggle (open, close to rest, lock-out, sweep seal/re-open) while a
+# tame or peaceful monster stands on the span or the portcullis square, or hides under the raised span (after a taming read, one
+# search turn reveals an adjacent eel/shark). 100 pet-kill messages in 63 of 448 taming-arm games (alignment -15, Luck -1 each:
+# every prayer then fails, pray.c): opening 31, closing on the portcullis 27+13, our own blow 13.
+PASSTUNE_PET_GUARD = True
+PASSTUNE_PET_WAIT = 5             # turns a toggle waits for the bridge to clear at most (never while a hostile is within 2 or HP < 0.6)
+
+# PASSTUNE_HORN_XORN (off; castle-gate, ledger F347): the xorns (2-4 per castle) converge on the hero and kill 10% of the
+# base games and 21% of the sweep arm; the bridge cannot kill them and a dust Elbereth holds them only while the hero stands
+# on it. A tooled horn (or a drum) improvised scares everything within distu < XL*10 that fails resist() (xorn MR 20: 4 in 5)
+# for ~25 of its moves; a fleeing monster with room to move away does not attack. Horn kits die to minotaurs half as often
+# as flute/harp kits (13 vs 30/32 of ~138, runs/cg-x4-base; the existing HORN_SCARE guard) -- this extends the same tool to
+# xorns: blow when one is in view within PASSTUNE_HORN_RANGE (at most every PASSTUNE_HORN_GAP game turns, PASSTUNE_HORN_MAX
+# times) and once on the Elbereth at the quiet decision before the walk-in.
+PASSTUNE_HORN_XORN = True
+PASSTUNE_HORN_RANGE = 7
+PASSTUNE_HORN_GAP = 18
+PASSTUNE_HORN_MAX = 12
+PASSTUNE_HORN_PRESS = True   # ...and, inside the castle (x >= 7), whenever 2+ hostiles stand within 4 squares: soldiers (MR 0) flee a horn too
+# LANDING_CRUSH_FIRST (castle-entry): a kit with a tonal instrument (the crusher armed: PASSTUNE_CRUSHER, an instrument in
+# the pack, the tune not yet known, not given up, not afloat) walks out of the west maze to the crusher square BEFORE it
+# tests anything: castle_cross.rush_strategy (the CFP/CL lift tests -- unknown rings, amulets and potions, the moat jumps and
+# routes) and castle_power.arrival_step's lift steps stand down (the wand engrave tests stay: 2 turns each). The tests resume
+# once the crusher is done or has given up. castle-k-instr-x4 base (448 instrument kits, 396 recognise the castle, 115 reach
+# the square): the games that ran such tests reached it 23% of 316, those that did not 54% of 80; on the moat route 7% of 70.
+LANDING_CRUSH_FIRST = False   # vk_castle port: OFF here (vk s26 4921bc3 ships True)
+# LANDING_QUIET_TESTS (castle-entry): the castle's arrival lift tests (unknown rings, amulets, boots: castle_cross.rush_strategy's
+# 'lift' step and castle_power.arrival_step's drill) wait while a monster is within 2 squares on dry land, as the potion tests
+# already do (_on_foot_blocked). Census of 168 minotaur-seen landings (JF_CENSUS): 151 of 208 ring/amulet tests ran with a
+# hostile within 2 squares (a minotaur at 2 in several), 7 HP lost in the 3 turns after; the usual layers (fight2, Elbereth rests,
+# MINO_GUARD) get the turn instead.
+LANDING_QUIET_TESTS = False
+# WISH_ROUTE_FIRST: on the castle a wand of wishing is WISH_TELEPORT_ROUTE's while the route still wants a wish
+# (charging, the teleport-control ring, the cursed scrolls): castle_logic._plan drops its own 'wish' step (castle_power's
+# arrival drill reads that plan) and CL_POTION_EARLY's potion tests wait (castle_cross._wish_route_pending), for at most
+# WISH_ROUTE_FIRST_TURNS after the recognition. tele_route zaps only with no monster at all within 3, so it skips ticks,
+# and the passage spent the wand in one: castle-lift (ledger F103) saw the drill wish for a ring of levitation on the
+# landing ('power drill: trying wish ... where we landed'), the level teleport (0.78-0.81) lost for a float in the west
+# maze. Main passes the lift suite's wish kit 10/10 by timing only; recognised at +2 (LANDING_EAR) it lost 2 of 10.
+# The passage's moves wait too (castle_logic.plan_step, castle_cross.rush_strategy): the west dig opened a wall to a
+# minotaur before the teleport-control ring was on (ld3w-ear-wr cra-jf14-s14~3). wish10 (the wish kit x 10 salts):
+# 10/10 with it, with and without LANDING_EAR (EAR without it 8/10); flags off 10/10. Inert without a wand of wishing
+# at the castle.
+WISH_ROUTE_FIRST = False   # vk_castle port: OFF here (vk s26 4921bc3 ships True)
+WISH_ROUTE_FIRST_TURNS = 100
+# EAST_LATE_DOOR (price-id; castle_logic._east_float_wait, castle_cross.door_zap_from_afar): afloat on a potion's timed lift
+# on the castle's east side, leave the locked back door (56,08) shut: no wand zap, key or kick at it while we float,
+# '>' once (a blessed potion lets us down at will: potion.c I_SPECIAL), then wait at SAFE_EAST (59,08) for the lift to
+# end (an uncursed potion lasts 10-149 turns and can't be ended). On foot, CFP_ZAP opens the door from SAFE_EAST's row
+# out of the eels' reach and we walk (58,8) -> (57,8) -> (56,8) onto the trap door (55,08). An open door (or one opened
+# before) is not entered while we float (as CL_EAST_WAIT).
+# Why: a door opened while we float lets us drift over the trap door, where we hover until the lift ends (potion.c: only
+# a blessed potion sets I_SPECIAL, which '>' ends; trap.c: a trap door doesn't trigger under Levitation; dokick.c: no
+# kick afloat without a brace square): the hall fills from the castle (xorns, earth elementals through the walls) and
+# from the courtyard through the open door. Harness east scenarios (price-id east/suite2: castle-base XL 8, 55/80 HP,
+# floating on a fresh uncursed potion at the courtyard's east column (62,08), cand-i flags, seeds 0-59): base 58/120 --
+# with a wand of striking the door was zapped open at once, 23/60 passed and 35 of the 37 deaths hovered in the hall;
+# with no tool 35/60 -- vs EAST_LATE_DOOR 77/120 (38/60, 39/60; no hall deaths). CL_EAST_WAIT (its wait starts at
+# (57,08), next to the eels) 37/60 vs 32 and 39 on seeds 0-29; BREACH_DOOR on top 78/120 (no gain). Castle-lift's
+# faithful lift suite (potion kits, paired): neutral -- full price knowledge 16 = 16 (+2/-2, 23 firings), base 11 vs 13
+# (+2/-4, 12 firings): real crossings reach the east with less lift left (median 36 turns) and few kits open the door
+# afloat; pooled, 11 hall hoverers passed 4 and 29 courtyard waiters 22 (ledger R205). Left over: ~1/3 of the scenario
+# heroes still die during the courtyard wait (the east maze's minotaurs via (63,06), dragons, giants).
+EAST_LATE_DOOR = False   # vk_castle port: OFF here (vk s26 4921bc3 ships True)
+
+#
+# --- castle-inner lane: from inside the castle to the wand of wishing (castle_inner.py) ---
+# CASTLE_INNER (off; RECOMMENDED ON, see below): the walk from the Crusher's lock-out square (07,08) -- or any square inside: castle-gate's
+# sweep hand-off at (27,08), a no-tune entry, the east back door -- to the castle's wand of wishing: the throne room, the locked
+# throne door (32,04)/(32,12) opened with a key, a digging wand, a pick-axe/mattock or a striking wand (never a kick:
+# dokick.c wake_nearby() wakes everything within sqrt(XL*20), lock.c does it each turn of a blunt #force), the hallway, the
+# tower (looked at from the hallway), the chest forced with a blade under the cursed scare monster scroll, the wand named by
+# one zap for WISH_TELEPORT_ROUTE (the module then holds the chest square until the route is done or the level changes);
+# castle 29: the secret door (38,08) dug open and the trap door (40,08). The form that ships is the DASH: no rest before the
+# throne room (_GATE 0), an Elbereth at once when a wall-walker or a level 8+ respecter arrives next to us (_ELB), no hold.
+# EVIDENCE (dev/replay.py: the same exact hand-off states, a bot started fresh there that remembers its last prayer; paired;
+# pass = Valley reached; old leg = the Crusher's wand leg): held-out libraries pooled, 199 states: old leg 40 (20.1% [15-26],
+# wand in hand 28 = 14.1%), CASTLE_INNER defaults 59 (29.6% [24-36], wand 48 = 24.1%), +30 -11, McNemar p 0.004 -- real-kit
+# x4 salts 2-3 (castle-k-crush-x4, 93 hand-offs) 8 -> 17 (+13 -4), castle-gate's sweep v3 hand-offs (56) 19 -> 23 (+8 -4),
+# fresh strong kits jf240-244 (Excalibur, AC -4; 50) 13 -> 19 (+9 -3); the 94 development states (x4 salts 0-1) 16 -> 19 (+9 -6),
+# the 51 of salt 0 alone 10 -> 8 (-2); the hand-off is the same for both: HP >= 80%, the court drained west along row 08.
+# Why a dash: awake monsters know where the hero is (monmove.c set_apparxy) and walk straight at her, wall-walkers through
+# the walls at speed 9 (2-4 xorns per castle, all awake), so every turn spent resting (0.2-0.3 HP/turn at XL 7-10) or holding
+# brings more of them: rest 0.85 + hold at (25,08) passed 7/51 on the real kits, 15/50 on fresh strong kits (21/46 on the
+# dev library it was tuned on: not reproducible), 20/56 on the sweep states, and died at the hold 15 times of 35.
+CASTLE_INNER = False   # vk_castle port: OFF here (vk s26 4921bc3 ships True)
+CASTLE_INNER_GATE = 0.0        # rest (Elbereth) in the antechamber and hall to this share of max HP before the throne room: 0 = none (was 0.85: the rests let the xorns converge, 7/51 vs 10/51)
+# CASTLE_INNER_PIT (off): a pit dug in the one-wide hallway behind us (a few squares beyond the throne door) is a gate:
+# a monster in a pit escapes 1 time in 40 per move (trap.c mintrap) and the queue behind it cannot pass; walkers all
+# fall in (not flyers or wall-walkers). The followers that killed the walk-ins in the hallways (trolls, ogre kings,
+# soldiers, harness R0/v1) arrive one at a time ~40 turns apart. REJECTED: 19/46 vs 21/46 without (8 of 26 hallway entrants
+# died before the chest tower, 5 without), R321.
+CASTLE_INNER_PIT = False
+# CASTLE_INNER_GRIND (off): a pit at (24,08) plugs the one-wide hall (see castle_inner._hall_grind): the barracks stream
+# and the court's remnants come at us one at a time, trapped one by one in the pit (1 turn in 40 to get out), and we
+# rest to full HP on Elbereth three squares back between kills instead of being swarmed at the throne-room door. REJECTED:
+# 17/46 vs 21/46 without (R321).
+CASTLE_INNER_GRIND = False
+CASTLE_INNER_GRIND_MIN = 15    # turns to wait at the stand square at least ...
+CASTLE_INNER_GRIND_QUIET = 25  # ... and with nothing hostile in the hall/throne room in view for this long
+CASTLE_INNER_GRIND_MAX = 700
+# CASTLE_INNER_LOCK (off): a throne door unlocked with a key (46% of the real kits carry a key, lock pick or credit
+# card) is closed and locked again behind us: monsters open closed doors but not locked ones (no keys); giants smash
+# them, wall-walkers pass. No effect measured (real kits 7/51 with and without; it needs a key and 10 seconds to spare).
+CASTLE_INNER_LOCK = False
+# CASTLE_INNER_XORN (off): kill the wall-walkers (xorns, earth elementals) one at a time at full HP: a lone one next to us
+# while healthy is fought (XORN_HP), and the antechamber -- quiet while we are west, the barracks stream is dormant --
+# is where we wait for them to home in through the walls before going east. REJECTED: 5/51 vs 7/51 (a xorn costs ~55 HP to kill
+# at XL 7-10, ~35 with Excalibur: Elbereth at its arrival, _ELB, costs ~5).
+CASTLE_INNER_XORN = False
+CASTLE_INNER_XORN_HP = 0.75
+CASTLE_INNER_CLEAR_MIN = 30    # turns to wait in the antechamber at least
+CASTLE_INNER_CLEAR_QUIET = 25  # ... with no wall-walker in view for this long
+CASTLE_INNER_CLEAR_MAX = 150
+CASTLE_INNER_SIDE = False      # pick the north or south hallway at the throne room entrance by what is near each door (no effect: 7/51 with and without)
+# CASTLE_INNER_ELB (ON with CASTLE_INNER): a wall-walker or other heavy respecter (xorn, earth elemental, level 8+) arriving next
+# to us gets an Elbereth at once, whatever our HP, and a few turns to flee (castle_inner._combat): it has just spent its move
+# arriving, the engraving takes one action (28% garbled, one round of blows then), and a hero that keeps walking at speed 15 is
+# not caught again by a speed 9 xorn. A fight with a xorn costs ~55 HP. Real-kit hand-offs: wall-walker deaths 23 -> 13 (never
+# resting, with ELB, 51 states); it fired 5.6 times a game.
+CASTLE_INNER_ELB = True
+# CASTLE_INNER_AVOID (off): the walk is the cheapest route with a penalty around hostile monsters in view (1/2/3 per square at
+# 3/2/1 squares from one, times _W) instead of the first shortest one: the BFS tie-break takes the NE diagonal and walks
+# along row 5 into the heavy remnants of the court (trolls, ogres, giants: 117 of 141 at x 35..37, y 5..7), where R0's
+# row-08 walk stays south of them (real-kit hand-offs jf82-s2, jf80-s14, jf87-s8: 3 deaths of G1 that the old leg survived).
+# No effect measured: sweep states 23/56 with and without.
+CASTLE_INNER_AVOID = False
+# CASTLE_INNER_EXCAL (off): the module acts only for a hero with Excalibur in the pack; any other hero is left to the old wand leg.
+# Not needed: the dash form beats rest + hold for Excalibur heroes too (fresh strong kits 19/50 vs 15/50, old leg 13/50).
+CASTLE_INNER_EXCAL = False
+# CASTLE_INNER_ADAPT (off): "dash unless strong": a hero without Excalibur walks by the dash form (no rest before the throne room,
+# no hold, Elbereth at once for wall-walkers and level 8+ respecters), a hero with Excalibur by the configured rest/hold.
+# Not needed (see _EXCAL).
+CASTLE_INNER_ADAPT = False
+CASTLE_INNER_AVOID_W = 2.0
+# CASTLE_INNER_CROWD (off): 3+ hostile within 2 squares with an @ among them (a mob in the throne room: 23 of the old leg's 78
+# deaths on 94 x4 hand-offs, soldiers + giant + troll + bat round one hero) -> back to the nearest hall/hallway square within
+# 6 steps and fight from there, single file; held 20 turns while an @ is in view. No gain: 8/51 with and without (fired 32 times
+# in 16 games).
+CASTLE_INNER_CROWD = False
+# CASTLE_INNER_HORN (off): a tooled horn (30% of the real kits: the instrument that played the passtune) is blown on 'Improvise?'
+# when two hostiles are within 4 squares, a wall-walker within 5, or an @ within 3 below 85% HP: music.c awaken_monsters makes
+# every monster in radius ~sqrt(XL*10) that fails resist() flee with no timer (soldiers, trolls, ogres, giants: MR 0, never;
+# xorns resist 20 times in 100); a fleeing monster that can move away does not attack (opp_items.py has the source notes).
+# No gain: 7/18 vs 7/18 on the horn-kit sweep hand-offs (old leg 9/18), ~10 blows a game.
+CASTLE_INNER_HORN = False
+CASTLE_INNER_HORN_GAP = 12     # turns between two blows
+CASTLE_INNER_LOW = 0.5         # outside the hall: start resting (Elbereth) below this share of max HP ...
+CASTLE_INNER_RESUME = 0.8      # ... and go on at this share
+CASTLE_INNER_ORDER = 'east'    # the towers' order: 'east' = NE NW SE SW (the guards gather at the west ends), 'west' = NW NE SE SW
+                               # (x4 dev states: east 19/94, west 14/94; 'south' SE SW NE NW 8/51 = east)
+# CASTLE_INNER_HOLD (off): wait at (25,08) behind the closed throne-room door for the barracks stream (awake soldiers
+# follow our square greedily: they run east along the barracks as we walk east and leave by a door a giant broke just
+# as we arrive); they meet us one at a time (two with a polearm) at the door instead of six around us in the room.
+# REJECTED: it gave 21/46 on the library it was tuned on and 15/50 on fresh seeds (old leg 13/50, dash 19/50); 15 of the 35
+# deaths on the fresh library were at the hold (lieutenants, xorns, wand rays).
+CASTLE_INNER_HOLD = False
+CASTLE_INNER_HOLD_MIN = 20     # turns to wait at least
+CASTLE_INNER_HOLD_MAX = 150    # ... and at most
+
+# --- coordinator (main), 2026-10-01 evening: inventory model fix ---
+# INV_FULL_LIST (off): item/inventory_items.InventoryItems.update() checks a carried container by APPLYING it, which plays game
+# steps, in the middle of parsing the inventory (letter order). A strategy change (AgentChangeStrategy) or a panic raised inside
+# that check left the item list cut at the container while _previous_inv_strs was already current, so every later update kept
+# the cut list until the inventory text changed. cand-l4 gate jf910 s7: the Crusher took the castle's wand of wishing
+# ('Z - a platinum wand', T14487), castle_inner preempted during the bag check of 'J - an empty bag named #0', and the bot saw
+# 6 of its 27 items for the 610 turns it had left (no wand, so no wish; killed by a xorn). On: the exception is held, the rest
+# of the list is parsed, then the exception is raised (same game steps, a complete list).
+INV_FULL_LIST = False   # vk_castle port: OFF here (vk s26 4921bc3 ships True)
+
+# --- routes lane (phase 2, 2026-10-02): the lift / polymorph / teleport-control routes at the castle; all OFF in the commits that add them ---
+# LIFT_EAST_DROP (off): castle_inner.owned_elsewhere() yields while the castle crossing is committed and the hero HOVERS over the
+# east trap door (55,8) on a lift (castle_logic._door_step then comes down: 'over the trap door: coming down' -> _stop_levitating ->
+# the ring comes off -> trap.c float_down() -> dotrap: the trap door opens, the Valley). Why: castle_inner sits above the crossing
+# in the preempt chain and EAST_HALL is inside its shell, so a levitating hero that opened the back door with a key, a lock pick, a
+# razing/striking wand (anything but a kick, which needs the lift off first) was taken over at (55,8): at castle 29 its PASSTUNE_C29
+# trapdoor leg walked the LEVITATING hero west over the other four trap doors to (40,8) (a levitator never falls) through the east
+# hall's xorns and earth elementals -- 4 of the 14 east arrivals of castle 29 in routes-lev-x4-cl5 (jf79-s7~s1 had 103/107 HP on the
+# trap door and died 15 turns later); at castles 25-28 it logged 'no path from (55, 8) to (54, 3)' (the secret door (38,8) is not
+# known) and held there 40-130 turns before 'M:stop': 16 of 26 died on that square, the 10 that reached 'M:stop' fell into the Valley.
+# Evidence: ledger result (routes-lev-x4 arms) -- numbers filled in when the arm lands.
+LIFT_EAST_DROP = False   # vk_castle port: OFF here (vk s26 4921bc3 ships True)
+# CASTLE_ZAP_RECOGNIZE (off): a wand of digging zapped DOWN at depth >= 25 on the main line that digs only a pit ('You dig a pit in
+# the floor.') or answers 'The floor here is too hard to dig in.' (dig.c dighole, nohole: the castle) recognises the castle
+# (castle.on_bottom), as the pick-axe path does. dive_logic's escape zap (WAND_RESERVE zone zap, mino_guard's zap) and its plain
+# wand zap marked the level undiggable without it, and the pit-message test read only the last message page (a monster's attack
+# replaces it): castle_key stayed None, so castle_logic's passage, the lift tests, CFP_RUSH and the xorn walk never ran. Evidence:
+# routes-polyx14-cl5 (the 14 real polymorph-source kits x 4 salts + a worn ring of polymorph control + a wand of polymorph): 4 of the
+# 10 games that zapped a digging wand down at the landing were never recognised -- they idled 2000-3000 turns on the west strip
+# (jf79-s4~s1 spent 680 turns as a xorn, 6 controlled polymorphs, 'form: xorn' and no walk: xorn_strategy needs castle_key).
+CASTLE_ZAP_RECOGNIZE = False   # vk_castle port: OFF here (vk s26 4921bc3 ships True)
+# XORN_STAIRS_NOTE (off): (1) VALLEY_XORN's '>' (dive_logic.valley_xorn) records the staircase both ways like agent.move('>') does --
+# its raw agent.direction('>') did not, so on Gehennom level 2 the arrival square was an unknown floor to _wand_escape and
+# _diggable_spot; (2) gehennom_escape does not zap down from a staircase or a square already refused, and any escape zap that
+# 'bounces off the stairs' marks its square as a bad dig spot (WAND_STAIRS_FIX did that for the plain zap only). Evidence:
+# routes-polyx14-cl5 jf88-s12~s1..s3 (a castle 25 xorn that walked the Valley's rock to the '>' in ~90 turns, then on the
+# arrival '<' of Gehennom level 2: 'You start digging downward.  The stairs are too hard to dig in.', then the wand of digging
+# twice: 'The beam bounces off the stairs and hits the ceiling.  You loosen a rock from the ceiling.  It falls on your head!',
+# a minotaur adjacent each time, dead on depth 27). Any hero that takes the Valley's '>' this way (the xorn route) is affected.
+XORN_STAIRS_NOTE = False   # vk_castle port: OFF here (vk s26 4921bc3 ships True)
+# POLY_RESUME (off; needs BREACH_RESUME): a castle passage given up for want of a way across ('nothing that crosses water') resumes
+# when a wand of polymorph is named later (an engrave test, a deep-escape zap, the castle gamble's reads) and a worn ring may be
+# polymorph control -- castle_cross._poly_now is then a way across (the xorn zap in rush_strategy). Evidence: routes-polyc14-cl5
+# (the 14 real polymorph-source kits x 4 salts + a worn ring of polymorph control): jf86-s4~s2 named its iron wand 'polymorph' by
+# an engrave test 27 turns after giving up and then idled 2,200 turns on the landing strip with the ring on; castle_logic's
+# _maybe_resume counted only a lift, a plan item or a cold source as 'a way across'.
+POLY_RESUME = False   # vk_castle port: OFF here (vk s26 4921bc3 ships True)
+# PREEMPT_SAFE (off; F362 audit of the unowned multi-step modules): bookkeeping that follows a step / atom block is written in a
+# finally so that the end-of-block preempt checks cannot skip it: Inventory.drop notes a dropped scroll that may be scare monster
+# (note_scare, passed by the scare-drop sites) before anything can raise, wand_text_retest records its re-test, opp_items.play /
+# use_camera record what the horn / camera turned out to be, known_items and id_engine keep their no-teleport and sell-test notes.
+PREEMPT_SAFE = False   # vk_castle port: OFF here (vk s26 4921bc3 ships True)
+
+# --- landing lane (lane 1 "landing", readiness program phase 2, 2026-10-01 night; dive_logic._landing_direct_update, ...) ---
+# All OFF in the commit that adds them. Evidence (harness castle-k-instr-x4 = 112 real castle arrivals + an unidentified tonal
+# instrument x 4 level salts, 448 games, paired per game; base = cand-l5 008ef20, run ck-instr-x4-cl5: crusher square 113, pass30 12):
+# + LANDING_CRUSH_FIRST (existing flag) 163 / 15 -> + LANDING_DIRECT 184 / 19 -> + LANDING_ROUTE + LANDING_FOCUS 234 / 20 -> with the
+# router's later fixes (run lnd-a4-final) 242 / 19: 54% of the landings reach the square (base 25%), the courtyard is reached in 205 of
+# 400 maze landings after a median 18 turns (51 with CRUSH_FIRST alone), pass30 4.2% [2.7, 6.5] vs 2.7% [1.5, 4.6] (n.s.: the walk-in from the square is
+# the next leak, not the landing). Why the games were lost (census, JF_CENSUS=1): 255 of the 448 landings have a MINOTAUR awake in the
+# west maze at turn 0 (median distance 4, within 3 squares in 73, first within 3 squares at T+2, adjacent at T+9) and 88 a covetous
+# lich (master/arch-lich teleports next to the hero a median 5 turns after the fall and summons nasties); the square is reached in 59%
+# of the castles with neither and 8-30% in the others. The oracle route from a landing to the courtyard is a median 6 turns (dig 4
+# turns per wall); the bot needed a median 31 (it stood still in 88% of those turns: recognition dig and pit 19%, rest 13%, scare-pile
+# hold 11%, pit fights 11%).
+# FINAL VALIDATION (one queued run lnd-final, 1982 games, per-game bot.cfg; tree b9e6839; dev/landing/final.py): the four flags
+# CRUSH_FIRST + DIRECT + ROUTE + FOCUS on castle-k-instr-x4: square 246, crush_over 129, pass30 20/448 = 4.5% [2.9, 6.8], castlebench
+# PASS 21; on the HELD-OUT level salts 5-8 (castle-k-instr-x4h, the same 112 kits, 448 pairs): square 124 -> 214 (+20.1 pt, t +8.5),
+# crush_over 73 -> 120 (+10.5 pt, t +4.7), throne 51 -> 69, alive@300 +5.1 pt, but pass30 18 -> 18 (+11/-11). POOLED 896 pairs:
+# square 237 -> 460 (t +14.4), crush_over 135 -> 249 (t +7.8), throne 90 -> 152 (t +5.1), pass30 30 -> 38 = 3.35% [2.4, 4.7] ->
+# 4.24% [3.1, 5.8] (+0.9 pt, sign +29/-21 p 0.32: not significant). P(pass | on the square) is 30/237 = 12.7% for the cand-l5
+# arrivals and 38/460 = 8.3% with the flags: the 223 extra arrivals convert at ~3.6% (weaker kits, castles with an awake minotaur or
+# lich that follows them to the square). The flags are a funnel/survival gain that becomes passes with the square-phase fixes.
+# Flag-off identity: 111 of 112 games byte-identical to cand-l5 (the 1 difference is a wall-clock shopkeeper name); real kits as
+# carried (castle-k-real, 112): with the flags on 105 identical, the 7 that differ all carry a tonal instrument, 0 of 104 kit-less
+# games change.
+# LANDING_DIRECT (off; needs a crusher-armed kit, PASSTUNE_CRUSHER): at a castle-likely landing (Dungeons of Doom, depth >= 25,
+# bot x <= 9, below Medusa if known) the castle is recognised on the first turn instead of by the dig that fails ('too hard to
+# dig', median 6 turns later, in a pit). The level counts as undiggable from turn 0 (no recognition pit, no digging-wand zap
+# by the minotaur guard, no scare-pile dig). Retracted when no castle sound is heard within LANDING_DIRECT_VERIFY turns.
+LANDING_DIRECT = False   # vk_castle port: OFF here (vk s26 4921bc3 ships True)
+LANDING_DIRECT_VERIFY = 12
+# LANDING_DIRECT_WINDOW: the game turns after the landing in which the recognition is still decided (1: only the first turns, the
+# kit as it fell; 10: also when the instrument arrives a few turns later, e.g. a tooled horn wished from a lamp; asked by the
+# wishes lane for WISH_SINGLE_V2 / LAMP_RUB_FIRST). Untested for that purpose; smoke: 14 kit-less real kits with the window at 12
+# replay the base byte for byte.
+LANDING_DIRECT_WINDOW = 1
+# LANDING_DIRECT_ANY (off; with LANDING_DIRECT): the same recognition for every kit, not only the crusher-armed ones (the castle
+# logic then works from turn 0 instead of from the failed recognition dig, a median 6 turns later, in a pit). With ROUTE_ALL on the
+# 112 real kits (castle-k-real, no route item): courtyard reached in 31 of 99 maze landings instead of 22, median turn 29 instead of
+# 50, but pass 0 -> 0 and sea-monster deaths 12 -> 20; routes' castle-k-polyc14 (56 games): pass30 19 -> 19. No gain: keep off.
+LANDING_DIRECT_ANY = False
+# LANDING_ROUTE (off; the crusher's walk out of the west maze): replaces CASTLE_WEST_DIG's straight L (rows first, digging every
+# wall: 21.8 turns on the 400 true harness maps) by a replanned cheapest route over the maze (castle_logic._route_step): known
+# squares 1 turn, walls 5 (apply + 3 dig turns + the step), unknown squares by the maze's structure (cells always floor, the
+# corners between them always wall, the passages open 57% / 66%), diagonal moves and digs allowed (not between two solid squares
+# when the pack weighs over 600), monsters and known traps avoided. 10.0 turns simulated (11.3 for a heavy hero, 8.7 with the
+# whole map known).
+LANDING_ROUTE = False   # vk_castle port: OFF here (vk s26 4921bc3 ships True)
+# LANDING_ROUTE_ALL (off; with LANDING_ROUTE): every Castle._approach caller (front door, polymorph, ...) leaves the west maze by the
+# route, not only the crusher's (a kit with a digging tool; without one the route isn't used at all). Not used by the levitation
+# route (castle_cross.cl_route_step has its own maze leg). Results: see LANDING_DIRECT_ANY. Keep off.
+LANDING_ROUTE_ALL = False
+# LANDING_ROUTE_ZAP (off; with LANDING_ROUTE): a KNOWN wand of digging with charges opens a wall of the maze in 1 turn per zap
+# (zap.c zap_dig: in a maze level it digs one wall and stops) instead of the 4 turns of the pick-axe; at most LANDING_ROUTE_ZAPS
+# charges (the castle floor can't be dug down; the rest of the charges stay for the dive through Gehennom). Harness
+# landing-digwand (22 kits with a known wand of digging x 4 salts = 88 games, the four flags with / without): the zap ran in 41 games;
+# square 45 -> 51 (+8/-2, t +2.0) but crush_over 29 -> 25, pass30 4 -> 5 (+3/-2): no pass gain measurable at n = 88. Keep off.
+LANDING_ROUTE_ZAP = False
+LANDING_ROUTE_ZAPS = 3
+# LANDING_FOCUS (off; crusher-armed kit, castle known): while the walk to the crusher square is ahead the optional detours wait
+# (dive_logic.landing_pending): the HP rest in the maze (a XL-7 hero heals 1 HP in 5 turns), and the scare-pile hold of
+# CASTLE_SCARE (it kept the hero on a dropped, usually fake, pile for 150 turns after the last Elbereth-ignorer was seen and then
+# rested to 90% HP: 16% of the first 40 turns of the 448 harness landings). With the flag the hold ends LANDING_FOCUS_HOLD turns
+# after the last ignorer in view and never rests for HP.
+LANDING_FOCUS = False   # vk_castle port: OFF here (vk s26 4921bc3 ships True)
+LANDING_FOCUS_HOLD = 12
+
+# --- armour lane (phase 2; wear / keep logic; ledger F382, R423): AC at the castle arrival ---
+# Castle arrivals (cand-k, 112): AC mean 0.7, median 0; the crusher route passes 6.8% at AC <= -2 against 2.0% above (F380,
+# kit-clustered, z 4.0), and AC at Medusa moves the pass by 0.029 per point (F067). dev/digbench.py on 186 real dig starts:
+# ARMOR_UP alone takes 0.3-0.4 AC; the next block is the mattock kits (32% of dig starts, AC +2.3 at the castle against -0.4 for
+# pick-axe kits): the dive drops the starting +3 small shield (4 AC) because a dwarvish mattock is two-handed.
+# MATTOCK_SHIELD (off): the shield is KEPT, not dropped, when the dive digs with a mattock (dive_logic.dig_with_tool, dig_toward;
+# ItemPriority._split keeps it in the pack), and it goes back on where the mattock is not in use: on the castle level once the
+# west maze is behind us or the visit is 60 turns old (the castle's own dig routes -- west dig, boulder smash, door digging --
+# apply the tool at once and a worn shield refuses a mattock) and in the Valley. The pass wields the best ONE-handed weapon first, wears only a shield
+# whose beatitude is known (the starting 'uncursed +3 small shield': an unknown one could be cursed and strand the mattock for
+# good), and any refused dig ('You cannot dig a two-handed weapon while wearing a shield') takes the shield off again and keeps
+# it off for MATTOCK_SHIELD_LOCK turns (wear_best_stuff too).
+MATTOCK_SHIELD = False   # vk_castle port: NOT PORTED (dive_logic.shield_lock/shield_up/shield_off are not here) -- must stay
+                         # False; read only by castle_inner._shield_blocks (vk s26 4921bc3 ships True)
+
+# --- t-route (vk s26 tele_route.py; vk_castle port): the wand-of-wishing route a CASTLE_INNER pass hands its wand to.
+# vk measured CASTLE_INNER with these ON; with them OFF tele_route plays exactly as before. (PRAY_BOOKKEEP is not ported:
+# our PRAYER_RECORD_FIX already books a prayer that a preemption interrupted.)
+# T_BLIND_READ: read only by tele_route._p_pass (single_wish_value, the wishes lane: not ported); the reading itself is not ported.
+T_BLIND_READ = False   # vk_castle port: OFF here (vk s26 4921bc3 ships True)
+# T_ROUTE_FIRE (off; t-route, tele_route.py): WISH_TELEPORT_ROUTE zaps and charges even with a monster in view within 3
+# squares (it used to wait for none at all: a sleeping soldier, a peaceful or one behind a door stalled the route, and on a
+# tower square or a castle landing the fight does not end); the 121-zap wrest loop of an empty wand still waits. The route
+# is ~6-9 game turns, ends in a level teleport and wins more than a fight does.
+T_ROUTE_FIRE = False   # vk_castle port: OFF here (vk s26 4921bc3 ships True)
+# T_ROUTE_EARLY_CHARGE (off; t-route): read the wished blessed charging scroll on the wand as soon as it is in hand instead of
+# after a zap that says 'Nothing happens' -- read.c recharge() sets a wand of wishing below 3 charges to 3 (the wish for the
+# scrolls spent one, so it is 0-2): ring, scrolls and a spare wish are then certain, and the route is a constant 7 actions
+# (zap, read, zap, put on, zap, read, read) instead of 6-9 with a wasted empty zap in two thirds of the wands.
+T_ROUTE_EARLY_CHARGE = False   # vk_castle port: OFF here (vk s26 4921bc3 ships True)
+# T_ROUTE_TOP (off; t-route): the wish route also sits at the TOP of the preempt chain (above the minotaur guard, KNOWN_ITEMS and
+# the emergency layer), except while a safe emergency prayer is due. W-suite wW1 (base, 112 real castle arrivals + an identified
+# wand of wishing (0:2)): 91 pass, 12 of the 21 failures are 'killed by a minotaur' in 2-24 turns -- mino_guard's plan ran
+# instead of the route, which needs 6-9 turns, and a won fight is not a pass.
+T_ROUTE_TOP = False   # vk_castle port: OFF here (vk s26 4921bc3 ships True)
+# ROUTE_ELBERETH (off; t-route): the wish route writes a dust Elbereth first when something that respects it stands next to us and nothing
+# that ignores it does (not in Gehennom; onscary(): all but @, minotaurs, shopkeepers/guards, blind and peaceful monsters). 3.6.6 erases it
+# only when WE attack (mon.c setmangry), not for a targetless wand zap or a read, and a scared monster makes no melee attack (dochug:
+# !scared). Costs one move per writing (1 letter in 25 is garbled: 72% whole), at most 2 tries per square and 5 per route. wW1 (112 real
+# castle arrivals + an identified wand): the 15 failures of T_ROUTE_FIRE+TOP are 5 minotaurs (it cannot help) and 9 troll/naga/worm/tiger/
+# crocodile/lich/horse/scorpion deaths in 3-11 turns with no Elbereth under the hero because the route sits above the layers that write one.
+ROUTE_ELBERETH = False   # vk_castle port: OFF here (vk s26 4921bc3 ships True)
+# WISH_PRAYER_HOLD (off; t-route): no safe-to-pray answer while the wishes granted so far have probably pushed the prayer timeout past
+# 200. zap.c makewish() does u.ublesscnt += rn1(100, 50) for EVERY wish ('the gods take notice'); pray.c can_pray() fixes a major trouble
+# only with ublesscnt <= 200, so a prayer after the 2nd wish fails about half of the time and after the 3rd nearly always -- Luck -3
+# (each later wish fails 3 times in 5 and burns its charge), an angry god, rndcurse, a lost level, and no invulnerability while the
+# minotaur hits ('You begin praying to Tyr.  The minotaur hits!'). Estimate: 100 per wish, less one per turn; held above 150 for a
+# non-urgent prayer (hunger) and above 240 for a critically-low-HP one (a coin flip after two wishes still beats certain death).
+# Evidence: wp14 W14-weak (Weak with hunger): the 4 seeds that prayed after ONE wish were 'satisfied'; s0 and s4 prayed after two:
+# 'Thou art arrogant' / 'Thou hast angered me' + black glow, the wand drained by failed wishes (s4: 50 zaps at (1:0)); wW1 real castle
+# arrivals with the route flags: 7 games prayed at HP 2-11 after 2-3 wishes, 1 of the 7 worked.
+WISH_PRAYER_HOLD = False   # vk_castle port: OFF here (vk s26 4921bc3 ships True)
+# ROUTE_RING_SWAP (ON; castle-redteam): WISH_TELEPORT_ROUTE takes one ring off (not a known-cursed one) when both ring
+# fingers are busy, to put the ring of teleport control on. Without it the route logged 'both ring fingers busy'
+# every turn and never moved: rt-ik-smoke jf73 s1 took the castle's wand of wishing through PASSTUNE_CRUSHER,
+# wished the TC ring and the scrolls, and sat there wearing two lift-test rings until a xorn killed it.
+ROUTE_RING_SWAP = False   # vk_castle port: OFF here (vk s26 4921bc3 ships True)
+
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
