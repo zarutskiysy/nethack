@@ -2093,7 +2093,23 @@ class DiveLogic:
         return jf_config.RANGED_ON_ELB and \
             self.agent.blstats.time - self._ranged_hit_turn <= jf_config.RANGED_BREAK_TURNS
 
-    def _lone_weak_deadly(self, monster):
+    def _prayerless_caution(self):
+        """PRAYERLESS_CAUTION (grind-safe): in the tour, no prayer for PRAYERLESS_GAP turns (an HP prayer would most
+        likely go unanswered), so the rest on Elbereth starts earlier (see jf_config). False on any error."""
+        if not jf_config.PRAYERLESS_CAUTION or self.diving:
+            return False
+        try:
+            agent = self.agent
+            if agent.prayer_failed:
+                return True
+            last = agent.last_prayer_turn
+            if last is None:
+                return agent.blstats.time < 300   # u_init.c: the first prayer timeout is 300
+            return agent.blstats.time - last <= jf_config.PRAYERLESS_GAP
+        except Exception:
+            return False
+
+    def _lone_weak_deadly(self, monster, force=False):
         """LONE_WEAK_THREAT: the lone-weak exemption above keys on the base level (mlevel <= 2), which takes in the
         grind's worst killers -- rothes (3 attacks, 1d3/1d3/1d8), giant bats (speed 22), giant ants (speed 18),
         dwarves with mattocks (d12), hill orcs, hobbits, were-creatures in animal form -- so below
@@ -2105,7 +2121,7 @@ class DiveLogic:
         their last 8 turns, 34 of them with no Elbereth rest in their last 40 turns -- v2a wiz-hum-neu-mal s201 and
         wiz-gno-neu-mal s201 (a lone rothe after the force bolts ran out, 10-11 HP to dead, no engraving), p0
         wiz-hum-neu-mal s202 (a hobbit from 13 HP), tr0 bar-hum-cha-mal s211 (a rothe at 7-9 HP)."""
-        if not jf_config.LONE_WEAK_THREAT:
+        if not (jf_config.LONE_WEAK_THREAT or force):
             return False
         try:
             import math
@@ -2131,7 +2147,9 @@ class DiveLogic:
             self._elbereth_resting = False
             yield False
         resting = self._elbereth_resting
-        threshold = ELBERETH_REST_UNTIL if resting else ELBERETH_REST_BELOW
+        prayerless = self._prayerless_caution()
+        below = max(ELBERETH_REST_BELOW, jf_config.PRAYERLESS_REST_BELOW) if prayerless else ELBERETH_REST_BELOW
+        threshold = max(ELBERETH_REST_UNTIL, below) if resting else below
         # a fast hitter (a leocrotta took a dive from 100 to 14 HP in 6 turns) can't be outrun: hide
         # behind Elbereth as soon as HP falls fast, not only below 40%
         falling = not resting and self._fast_hp_loss()
@@ -2147,7 +2165,7 @@ class DiveLogic:
         near = self._near_hostiles()
         # a lone weak monster is better killed than hidden from (engraving gives it a free hit)
         if len(near) == 1 and getattr(near[0][3], 'mlevel', 99) <= 2 and bl.hitpoints >= 6 and \
-                not self._lone_weak_deadly(near[0]):
+                not self._lone_weak_deadly(near[0], force=prayerless):
             self._elbereth_resting = False
             yield False
         # REST_FIGHT_WEAK: ... at any HP when one blow kills it (makemon difficulty <= 2, not faster than us): the
