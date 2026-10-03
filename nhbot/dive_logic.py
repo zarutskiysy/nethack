@@ -905,6 +905,10 @@ class DiveLogic:
         self._prep_pickup_target = None    # PREP_DIVE_PICKUP: (level key, square) being walked to
         self._prep_pickup_since = 0
         self._prep_seen_levels = set()     # PREP_DIVE_PICKUP: levels whose candidates were logged
+        self._missile_lines = []           # MISSILE_RECOVER: (level key, y0, x0, dy, dx, turn) of our throws
+        self._missile_done = {}            # MISSILE_RECOVER: level key -> {square: turn visited/given up}
+        self._missile_target = None        # MISSILE_RECOVER: (level key, square) being walked to
+        self._missile_since = 0
         self._faint_start = None           # turn the current faint began (last awake observation)
         self._guard_weak_since = None      # turn the current Weak spell began (FAINT_GUARD_IDLE)
         self._guard_hold_until = -1        # keep holding the faint guard's Elbereth until this turn (IDLE)
@@ -3381,6 +3385,153 @@ class DiveLogic:
                 self._prep_dip_block_until = agent.blstats.time + 50
                 raise AgentPanic('no fountain here')
         return True
+
+    # ---- MISSILE_RECOVER (jf_config; research/rog_fix.md) ----
+
+    _DAGGER_GLYPHS = None
+
+    @classmethod
+    def _dagger_glyphs(cls):
+        if cls._DAGGER_GLYPHS is None:
+            names = ('dagger', 'orcish dagger', 'elven dagger', 'silver dagger', 'athame')
+            gl = set()
+            for g in G.NORMAL_OBJECTS:
+                try:
+                    if nh.objdescr.from_idx(nh.glyph_to_obj(g)).oc_name in names:
+                        gl.add(g)
+                except Exception:
+                    continue
+            cls._DAGGER_GLYPHS = frozenset(gl)
+        return cls._DAGGER_GLYPHS
+
+    def note_missile(self, dy, dx):
+        """fight2 threw a missile from where we stand along (dy, dx): its line is where our missiles lie."""
+        try:
+            bl = self.agent.blstats
+            self._missile_lines.append((self.agent.current_level().key(), int(bl.y), int(bl.x), int(dy), int(dx),
+                                        int(bl.time)))
+            if len(self._missile_lines) > 64:
+                del self._missile_lines[:-64]
+        except Exception:
+            pass
+
+    def _missile_recover_ok(self):
+        """MISSILE_RECOVER's calm: no hostile within 7, HP >= 50%, not Weak, not levitating, not in a shop, Sokoban,
+        the castle or Medusa's level."""
+        agent = self.agent
+        bl = agent.blstats
+        level = agent.current_level()
+        if level.dungeon_number == Level.SOKOBAN or agent.character.prop.polymorph:
+            return False
+        if bl.hunger_state >= Hunger.WEAK or bl.hitpoints < 0.5 * bl.max_hitpoints:
+            return False
+        if bl.carrying_capacity > 0 or self.levitating() or self.on_medusa_level() or self.castle.active():
+            return False
+        here = (int(bl.y), int(bl.x))
+        if level.shop_interior[here] or level.shop[here]:
+            return False
+        for m in agent.get_visible_monsters():
+            if max(abs(int(m[1]) - bl.y), abs(int(m[2]) - bl.x)) <= 7:
+                return False
+        return True
+
+    def _missile_candidates(self, level, dis):
+        """Squares (BFS 1..MISSILE_RECOVER_DIST, not a shop) that lie on a recent throw's line and show an object or a
+        corpse (a point-blank kill's corpse hides the daggers under it) and were not visited since that throw, or
+        that show a dagger and were not visited within MISSILE_RECOVER_TURNS."""
+        agent = self.agent
+        key = level.key()
+        now = agent.blstats.time
+        done = self._missile_done.setdefault(key, {})
+        never = -10 ** 9
+        mask = utils.isin(agent.glyphs, self._dagger_glyphs())
+        for (y, x), t in done.items():
+            if now - t < jf_config.MISSILE_RECOVER_TURNS:
+                mask[y, x] = False
+        h, w = mask.shape
+        objects = G.OBJECTS | G.BODIES
+        self._missile_lines = [ln for ln in self._missile_lines if now - ln[5] <= jf_config.MISSILE_RECOVER_TURNS]
+        for lkey, y0, x0, dy, dx, t in self._missile_lines:
+            if lkey != key:
+                continue
+            for k in range(1, jf_config.MISSILE_RECOVER_RANGE + 1):
+                y, x = y0 + dy * k, x0 + dx * k
+                if not (0 <= y < h and 0 <= x < w):
+                    break
+                if not level.walkable[y, x] and level.seen[y, x]:
+                    break
+                if (agent.glyphs[y, x] in objects or level.objects[y, x] in objects) and done.get((y, x), never) < t:
+                    mask[y, x] = True
+        mask &= (dis > 0) & (dis <= jf_config.MISSILE_RECOVER_DIST) & ~level.shop_interior & ~level.shop
+        return mask
+
+    def _pickup_missiles_here(self):
+        """Pick up the thrown missiles (daggers, darts...) lying under us, not shop goods. True if any."""
+        from .combat.fight_heur import decide_what_to_pickup
+        agent = self.agent
+        items = decide_what_to_pickup(agent)
+        if not items:
+            return False
+        agent.log(f'MISSILE recover: picking up {[i.text for i in items][:4]}')
+        agent.inventory.pickup(items)
+        return True
+
+    def _missile_plan(self):
+        """MISSILE_RECOVER's decision (no agent steps): None (nothing to do), 'here' (pick up under us) or a square."""
+        from .combat.fight_heur import decide_what_to_pickup
+        if not jf_config.MISSILE_RECOVER or not (self._missile_lines or self.diving):
+            return None
+        if not self._missile_recover_ok():
+            return None
+        agent = self.agent
+        level = agent.current_level()
+        done = self._missile_done.setdefault(level.key(), {})
+        here = (int(agent.blstats.y), int(agent.blstats.x))
+        if agent.blstats.time - done.get(here, -10 ** 9) >= jf_config.MISSILE_RECOVER_TURNS and \
+                decide_what_to_pickup(agent):
+            return 'here'
+        dis = agent.bfs()
+        mask = self._missile_candidates(level, dis)
+        if not mask.any():
+            return None
+        ys, xs = mask.nonzero()
+        i = int(np.argmin(dis[ys, xs]))
+        return int(ys[i]), int(xs[i])
+
+    @Strategy.wrap
+    def missile_recover_strategy(self):
+        """MISSILE_RECOVER: walk to our thrown missiles a few steps away and pick them up (see jf_config)."""
+        agent = self.agent
+        try:
+            plan = self._missile_plan()
+        except AgentPanic:
+            raise
+        except Exception as e:   # fail safe: no recovery
+            agent.log(f'MISSILE recover: check failed: {type(e).__name__} {str(e)[:120]}')
+            plan = None
+        if plan is None:
+            yield False
+        yield True
+        key = agent.current_level().key()
+        done = self._missile_done.setdefault(key, {})
+        if plan == 'here':
+            done[(int(agent.blstats.y), int(agent.blstats.x))] = agent.blstats.time
+            self._pickup_missiles_here()
+            return
+        if self._missile_target == (key, plan) and \
+                agent.blstats.time - self._missile_since > 3 * jf_config.MISSILE_RECOVER_DIST:
+            done[plan] = agent.blstats.time   # couldn't get there in time (a boulder, a door, a peaceful)
+            self._missile_target = None
+            return
+        if self._missile_target != (key, plan):
+            self._missile_target = (key, plan)
+            self._missile_since = agent.blstats.time
+            agent.log(f'MISSILE recover: walking to {plan} (BFS <= {jf_config.MISSILE_RECOVER_DIST})')
+        agent.go_to(*plan)
+        if (int(agent.blstats.y), int(agent.blstats.x)) == plan:
+            done[plan] = agent.blstats.time
+            self._missile_target = None
+            self._pickup_missiles_here()
 
     _PREP_PICKUP_GLYPHS = None
 

@@ -158,6 +158,42 @@ def ranger_point_blank_priority(agent, monster, default):
         return default
 
 
+VOLLEY_DAGGERS = frozenset(('dagger', 'orcish dagger', 'elven dagger', 'silver dagger', 'athame'))
+
+
+def rogue_volley(agent, launcher, ammo):
+    """ROG_VOLLEY: a Rogue (not polymorphed) whose best ranged set is a hand-thrown dagger stack of at least
+    ROG_VOLLEY_MIN (dothrow.c: Rogue +1 multishot with daggers only)."""
+    try:
+        return bool(jf_config.ROG_VOLLEY) and agent.character.role == agent.character.ROGUE and \
+            not agent.character.prop.polymorph and launcher is None and ammo is not None and \
+            ammo.is_unambiguous() and ammo.object.name in VOLLEY_DAGGERS and \
+            ammo.count >= jf_config.ROG_VOLLEY_MIN
+    except Exception:
+        return False
+
+
+def rogue_volley_priority(agent, monster, default):
+    """The volley's priority: one above melee_monster_priority's (16 when HP > 8 or the monster is faster, +1 for a
+    were), plus AT_FOCUS on an Elbereth ignorer as melee gets it; WEAK_MONSTERS, ONLY_RANGED_SLOW_MONSTERS and
+    EXPLODING_MONSTERS keep ranged_priority's own value (melee, or the default ranged choice)."""
+    try:
+        _, _, _, mon, _ = monster
+        if mon.mname in WEAK_MONSTERS or mon.mname in ONLY_RANGED_SLOW_MONSTERS or \
+                mon.mname in EXPLODING_MONSTERS:
+            return default
+        ret = 2
+        if agent.blstats.hitpoints > 8 or is_monster_faster(agent, monster):
+            ret += 15
+        if 'were' in mon.mname:
+            ret += 1
+        if focus_ignorer(agent, mon):
+            ret += jf_config.AT_FOCUS
+        return ret
+    except Exception:
+        return default
+
+
 # hypothesis: a Valkyrie's kitten that steps out of sight into a dark corridor is still there: the dagger
 # thrown at a monster behind it kills the pet ("It yowls!  You kill it!  You hear the rumble of distant
 # thunder": -15 alignment, -5 Luck), every prayer of the Dlvl 1-3 grind then fails and she starves (judge
@@ -256,6 +292,8 @@ def ranged_priority(agent, dy, dx, monsters):
                     return None
             if dis == 1 and ranger_point_blank(agent, launcher, ammo):
                 ret = ranger_point_blank_priority(agent, monster[0], ret)
+            elif dis == 1 and rogue_volley(agent, launcher, ammo):
+                ret = rogue_volley_priority(agent, monster[0], ret)
             return ret, y, x, monster[0]
 
 

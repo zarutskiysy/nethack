@@ -2041,6 +2041,29 @@ BUY_PROT_ORC_TOWN_HOSTILES = 3      # hostile orcs in view in a priestless town 
 BUY_PROT_MAGIC_MAP = True           # read a known magic mapping scroll on Mines 3-4 to find the temple (Tourists)
 BUY_PROT_FAST_BRANCH = True         # the trip takes FAST_BRANCH's direct way to the Mines (dive.trip_branch_strategy)
 BUY_PROT_ANYTIME = False            # also donate outside the trip (any later temple visit with 400*XL gold)
+# ROG_VOLLEY (off, research/rog_fix.md; combat/fight_heur.rogue_volley): a Rogue throws its dagger stack at an ADJACENT
+# monster instead of meleeing it with the short sword (or the dig-dive's pick-axe, Unskilled for a Rogue: -4 to hit).
+# NetHack 3.6.6 dothrow.c: a Rogue gets +1 multishot with daggers (l.151-154) on top of Skilled +1 / Expert +2
+# (l.122-133): rnd(2) daggers a turn at Basic, rnd(3) Skilled, rnd(4) Expert; thitmonst adds +2 to-hit for a throwing
+# weapon and +2 at point blank (disttmp = 3 - distmin, l.1563), and dbon() applies to thrown daggers (uhitm.c l.1101).
+# Every dagger that hits trains P_DAGGER (use_skill in hmon), and Character.select_skill_to_upgrade takes the first
+# advanceable skill in #enhance order -- dagger is the Rogue's first. Melee trains short sword instead, so b10 rogues
+# fight ~10:1 in melee (death-time messages: 236 melee swings vs 20 volleys). Not for WEAK_MONSTERS (newts, lichens:
+# the volley only scatters daggers), exploding or passive-only monsters (ranged_priority's defaults), and only with at
+# least ROG_VOLLEY_MIN daggers in the stack. Melee keeps the backstab (uhitm.c l.775: hand_to_hand only).
+ROG_VOLLEY = False
+ROG_VOLLEY_MIN = 3
+# MISSILE_RECOVER (off; dive_logic.missile_recover_strategy): walk back for thrown missiles. The dig-dive never runs
+# gather_items, so every dagger thrown there is lost unless it lands under us ('the smoke games had thrown their daggers
+# away by the dive', dive_logic._lure_ammo), and a point-blank kill buries the daggers under the corpse (the map shows
+# the corpse). The squares along each throw's line (MISSILE_RECOVER_RANGE squares, within MISSILE_RECOVER_TURNS) that
+# still show an object, and any dagger in view, within MISSILE_RECOVER_DIST BFS steps are visited and their thrown
+# missiles picked up -- only with no hostile within 7, HP >= 50%, not Weak, never in a shop / Sokoban / on the castle or
+# Medusa's level / levitating.
+MISSILE_RECOVER = False
+MISSILE_RECOVER_DIST = 6
+MISSILE_RECOVER_RANGE = 8
+MISSILE_RECOVER_TURNS = 300
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

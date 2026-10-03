@@ -3002,6 +3002,8 @@ class Agent:
                                           allow_nonunit_distance=True)
                 fired = self.fire(ammo, dir)
                 assert fired, (ammo, dir)
+                if jf_config.MISSILE_RECOVER:
+                    self.global_logic.dive.note_missile(dy, dx)
                 return wait_counter
 
         elif best_action[0] == 'force_bolt':
