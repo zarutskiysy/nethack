@@ -3316,6 +3316,21 @@ class DiveLogic:
             cls._DAGGER_GLYPHS = frozenset(gl)
         return cls._DAGGER_GLYPHS
 
+    _DART_GLYPHS = None
+
+    @classmethod
+    def _dart_glyphs(cls):
+        if cls._DART_GLYPHS is None:
+            gl = set()
+            for g in G.NORMAL_OBJECTS:
+                try:
+                    if nh.objdescr.from_idx(nh.glyph_to_obj(g)).oc_name == 'dart':
+                        gl.add(g)
+                except Exception:
+                    continue
+            cls._DART_GLYPHS = frozenset(gl)
+        return cls._DART_GLYPHS
+
     def note_missile(self, dy, dx):
         """fight2 threw a missile from where we stand along (dy, dx): its line is where our missiles lie."""
         try:
@@ -3357,6 +3372,8 @@ class DiveLogic:
         done = self._missile_done.setdefault(key, {})
         never = -10 ** 9
         mask = utils.isin(agent.glyphs, self._dagger_glyphs())
+        if (jf_config.TOU_VOLLEY or jf_config.TOU_DART_SAVE) and agent.character.role == agent.character.TOURIST:
+            mask |= utils.isin(agent.glyphs, self._dart_glyphs())   # a Tourist's darts in view too
         for (y, x), t in done.items():
             if now - t < jf_config.MISSILE_RECOVER_TURNS:
                 mask[y, x] = False
@@ -6803,7 +6820,10 @@ class DiveLogic:
         level = agent.current_level()
         mapped = self.__dict__.setdefault('_magic_mapped', set())
         prop = agent.character.prop
-        if level.key() in mapped or agent.blstats.depth < self.MAGIC_MAPPING_MIN_DEPTH or \
+        min_depth = self.MAGIC_MAPPING_MIN_DEPTH
+        if jf_config.TOU_MAPPING and agent.character.role == agent.character.TOURIST:
+            min_depth = jf_config.TOU_MAPPING_MIN_DEPTH
+        if level.key() in mapped or agent.blstats.depth < min_depth or \
                 prop.blind or prop.confusion or prop.hallu:
             return False
         scrolls = [i for i in flatten_items(agent.inventory.items)

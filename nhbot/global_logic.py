@@ -15,6 +15,7 @@ from . import castle_front
 from . import castle_landing
 from . import mino_guard
 from . import known_items
+from . import tou_kit
 from . import opp_items
 from . import tele_route
 from . import power_route
@@ -289,6 +290,7 @@ class GlobalLogic:
         self.landing = castle_landing.LandingGuard(self.dive)   # jf_config.LANDING_GUARD (valley-exit)
         self.mino = mino_guard.MinoGuard(self.dive)   # jf_config.MINO_GUARD (minotaur lane)
         self.known = known_items.KnownItemsGuard(self.dive, self.mino)   # jf_config.KNOWN_ITEMS (dive-audit)
+        self.tou = tou_kit.TouKitGuard(self.dive, self.mino)   # jf_config.TOU_CAMERA / TOU_QUAFF (Tourist kit lane)
         # Knight only (kni_steed.py): feed the saddled pony so hunger never turns it on us
         self.steed = SteedKeeper(agent)
 
@@ -1193,6 +1195,12 @@ class GlobalLogic:
             # lets a due emergency prayer go first (below the minotaur guard, which has its own item plan)
             .preempt(self.agent, [
                 self.known.strategy(),
+            ])
+            # Tourist kit lane (TOU_CAMERA / TOU_QUAFF, tou_kit.py; off by default, Tourists only): the expensive camera
+            # at the most damaging blindable hostile within 2 when the melee turns deadly (blinded, 3 in 4 flee), a
+            # healing potion before HP < 1/3 -- grind and dive, above KNOWN_ITEMS and the emergency, below the minotaur
+            .preempt(self.agent, [
+                self.tou.strategy(),
             ])
             # minotaur lane (MINO_GUARD, mino_guard.py): a minotaur in view -- a known way out first (digging down, the
             # up stairs, teleport/sleep/polymorph at it, teleport ourselves, genocide, scare monster), then gambles;

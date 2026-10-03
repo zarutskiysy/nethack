@@ -194,6 +194,33 @@ def rogue_volley_priority(agent, monster, default):
         return default
 
 
+def tourist_volley(agent, launcher, ammo):
+    """TOU_VOLLEY: a Tourist (not polymorphed) whose best ranged set is a hand-thrown dart stack of at least
+    TOU_VOLLEY_MIN (research/tou_kit.md: bare hands or Unskilled daggers otherwise)."""
+    try:
+        return bool(jf_config.TOU_VOLLEY) and agent.character.role == agent.character.TOURIST and \
+            not agent.character.prop.polymorph and launcher is None and ammo is not None and \
+            ammo.is_unambiguous() and ammo.object.name == 'dart' and ammo.count >= jf_config.TOU_VOLLEY_MIN
+    except Exception:
+        return False
+
+
+def tourist_dart_save(agent, launcher, ammo, mon):
+    """TOU_DART_SAVE: no +2 darts (a hit breaks 1 in 4) at a trivial monster (difficulty <= TOU_DART_SAVE_DIFF) while
+    the stack holds fewer than TOU_DART_SAVE_ABOVE. Floating eyes and the other ranged-only kinds keep their darts."""
+    try:
+        if not jf_config.TOU_DART_SAVE or agent.character.role != agent.character.TOURIST:
+            return False
+        if launcher is not None or ammo is None or not ammo.is_unambiguous() or ammo.object.name != 'dart':
+            return False
+        if mon.mname in ONLY_RANGED_SLOW_MONSTERS or mon.mname in EXPLODING_MONSTERS:
+            return False
+        return int(getattr(mon, 'difficulty', 99)) <= jf_config.TOU_DART_SAVE_DIFF and \
+            ammo.count < jf_config.TOU_DART_SAVE_ABOVE
+    except Exception:
+        return False
+
+
 # hypothesis: a Valkyrie's kitten that steps out of sight into a dark corridor is still there: the dagger
 # thrown at a monster behind it kills the pet ("It yowls!  You kill it!  You hear the rumble of distant
 # thunder": -15 alignment, -5 Luck), every prayer of the Dlvl 1-3 grind then fails and she starves (judge
@@ -276,6 +303,8 @@ def ranged_priority(agent, dy, dx, monsters):
             # starves (DT6A seed 1). Astra: kill spores from range only, away from pets.
             if mon.mname == 'gas spore' and spore_blast_hits_friend(agent, y, x):
                 return None
+            if tourist_dart_save(agent, launcher, ammo, mon):
+                return None
             # a miss, or the rest of a multishot volley, flies on past the target: never with a pet or a
             # peaceful behind it (two unseen games hit Minetown gnomes that way: the Watch killed them)
             by, bx, reach = y, x, agent.character.get_range(launcher, ammo)
@@ -293,6 +322,8 @@ def ranged_priority(agent, dy, dx, monsters):
             if dis == 1 and ranger_point_blank(agent, launcher, ammo):
                 ret = ranger_point_blank_priority(agent, monster[0], ret)
             elif dis == 1 and rogue_volley(agent, launcher, ammo):
+                ret = rogue_volley_priority(agent, monster[0], ret)
+            elif dis == 1 and tourist_volley(agent, launcher, ammo):
                 ret = rogue_volley_priority(agent, monster[0], ret)
             return ret, y, x, monster[0]
 

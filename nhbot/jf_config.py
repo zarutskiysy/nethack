@@ -1761,6 +1761,43 @@ MISSILE_RECOVER_DIST = 6
 MISSILE_RECOVER_RANGE = 8
 MISSILE_RECOVER_TURNS = 300
 
+# Tourist kit lane (research/tou_kit.md; tou_kit.py, combat/fight_heur.tourist_*, dive_logic; role-gated in code and
+# through roles.py OVERRIDES['tou']). 90 current-code games (au_tou_): the expensive camera (30-99 charges) was applied
+# twice; 22 of 38 grind deaths and 36 of 52 dive deaths were melee against monsters with eyes; the +2 dart stack was
+# gone (0 left) in 22 of the 29 Dlvl-20+ inventory dumps and the grind deaths re-picked single darts.
+# TOU_CAMERA: when the awake hostiles' melee kills us within TOU_CAMERA_TURNS turns with P >= TOU_CAMERA_PDIE, flash the
+# most damaging blindable hostile within TOU_CAMERA_RANGE that is first on its line (adjacent ones first: blinded for
+# good; dist2 < 9: flees 3 times in 4). TOU_CAMERA_WERE: also a were in animal form within 2 while not a lycanthrope.
+TOU_CAMERA = False
+TOU_CAMERA_TURNS = 5
+TOU_CAMERA_PDIE = 0.1
+TOU_CAMERA_RANGE = 2
+TOU_CAMERA_RESERVE = 0         # keep this many charges
+TOU_CAMERA_RETRY = 20          # turns before a square/name whose flash blinded nothing is tried again
+TOU_CAMERA_WERE = True         # (only with TOU_CAMERA)
+# TOU_QUAFF: HP < TOU_QUAFF_FRAC of max and P(death in 2 turns) >= TOU_QUAFF_PDIE -> a known (full / extra) healing
+# potion now (the emergency waits for HP < 1/3 or < 8); a due safe prayer first
+TOU_QUAFF = False
+TOU_QUAFF_FRAC = 0.5
+TOU_QUAFF_PDIE = 0.25
+# TOU_VOLLEY: a Tourist throws its dart stack (>= TOU_VOLLEY_MIN) at an ADJACENT non-trivial monster instead of meleeing
+# (a Tourist starts with nothing wielded: bare hands d2; found daggers are Unskilled, -4 to hit). dothrow.c: a dart is
+# a throwing weapon (+2 to hit) and +2 at point blank, d3+2 for the +2 darts, multishot rnd(2)/rnd(3) at Skilled/Expert
+# dart (Tourist's dart volleys are not 'weak'); each hit trains P_DART. Same priority rule as ROG_VOLLEY.
+TOU_VOLLEY = False
+TOU_VOLLEY_MIN = 4
+# TOU_DART_SAVE: a +2 dart that hits breaks 1 time in 4 (dothrow.c: chance = 3 - spe -> !rn2(4)); no darts at trivial
+# monsters (permonst difficulty <= TOU_DART_SAVE_DIFF: jackals, rats, newts, kobolds...) while the stack holds fewer
+# than TOU_DART_SAVE_ABOVE -- they are kept for the rothes, ants and weres. With TOU_VOLLEY or TOU_DART_SAVE on,
+# MISSILE_RECOVER (if on) also walks back for darts in view (not only daggers).
+TOU_DART_SAVE = False
+TOU_DART_SAVE_DIFF = 2
+TOU_DART_SAVE_ABOVE = 30
+# TOU_MAPPING: a Tourist reads its known scrolls of magic mapping from Dlvl TOU_MAPPING_MIN_DEPTH (not 3) when the dive
+# knows no way down (dive_logic._read_magic_mapping; 10 of 29 Dlvl-20+ dumps still held all 4 scrolls)
+TOU_MAPPING = False
+TOU_MAPPING_MIN_DEPTH = 2
+
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
