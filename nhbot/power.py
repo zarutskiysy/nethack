@@ -341,6 +341,34 @@ def keep_scroll(item):
     return jf_config.SCARE_KEEP and is_scare_candidate(item)
 
 
+def scare_pickup_outcome(status, picked_before):
+    """pickup.c pickup_object() for a scroll of scare monster (`status` an Item BUC constant, `picked_before`: it has
+    been picked up -- spe 1 -- since it last was blessed): 'unbless' (blessed: it loses the blessing, spe untouched),
+    'mark' (uncursed, spe 0: spe becomes 1), 'dust' (cursed, or uncursed with spe 1: it crumbles). Unknown BUC is
+    'unknown' (a random floor scroll is cursed 1 time in 8: mkobj.c blessorcurse(otmp, 4))."""
+    if status == Item.BLESSED:
+        return 'unbless'
+    if status == Item.CURSED:
+        return 'dust'
+    if picked_before:
+        return 'dust'
+    if status == Item.UNCURSED:
+        return 'mark'
+    return 'unknown'
+
+
+def kit_keep(agent, item):
+    """CASTLE_KIT_PICKUP: a carried known scroll of scare monster is never dropped by arrange_items (picked up again
+    it would turn to dust)."""
+    return jf_config.CASTLE_KIT_PICKUP and is_known_scare(agent, item)
+
+
+def kit_floor_dust(agent, item):
+    """CASTLE_KIT_PICKUP: a floor scroll known to be scare monster that a pickup would turn to dust (known cursed)."""
+    return jf_config.CASTLE_KIT_PICKUP and is_scare_candidate(item) and is_known_scare(agent, item) and \
+        scare_pickup_outcome(item.status, False) == 'dust'
+
+
 def scare_scrolls(agent):
     """(known, candidates): carried scrolls that are scare monster, and unknown ones that may be, each candidate
     as (item, P(scare)). To use one, drop it with agent.inventory.drop(item) and stand on it; the drop is

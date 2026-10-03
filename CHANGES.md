@@ -72,3 +72,31 @@
   (`roles.attributes_identity`, so the per-role config applies even when the welcome line is missed), and the Tourist
   engine `pf_dtad7a` (DT6A/nethacker@ad7a864) routed for `tou`. The `RING_MODULE`/`MEDUSA_HOP` module code is
   byte-identical to daglar's, so this reproduces the leader's behaviour exactly, with v4's extra fixes on top.
+- **castle-wish (CASTLE_WISH_FIRST, off; `nhbot/castle_treasury.py`, workspace `research/castle_wish.md`):** the
+  castle's wand of wishing before the trap door for every bot inside the walls -- all four towers (nearest first; a
+  tower whose chest square was seen bare or with a soldier on it is ruled out; one showing an object goes first), a
+  hostile on the way fought instead of ending the detour, no HP floor on the chest square (the cursed scare monster
+  scroll on it is a melee refuge), the lock opened by key > blade > any forceable weapon (the pick-axe bashes) > a
+  kick from the tower floor, and a walk on foot to the chest when the xorn form runs out inside a tower; FRONT_V3's
+  chest step uses a key first. Always on (bug fix): a wand taken from the chest is named (zapped) before the HP and
+  budget checks, which used to end the detour with it unnamed, out of WISH_TELEPORT_ROUTE's reach.
+  `tests/test_castle_wish.py` (fakes): `python tests/test_castle_wish.py`.
+- **strong-castle (CASTLE_BASECAMP / CASTLE_FARM_THEN_ENTER / CASTLE_KIT_PICKUP, all off; `nhbot/castle_tune.py`,
+  workspace `research/strong_castle.md`):** on top of CASTLE_PASSTUNE. BASECAMP: a known scroll of scare monster is
+  dropped on the first tune square we stand on (onscary: minotaurs, @ and eels too) -- rest there instead of pausing,
+  strike from it (never with an Elbereth under it), no minotaur/crowd/sea aborts on it, never picked up again; without
+  one, a camp on a west-courtyard square with no water beside it ((03,08) first) with a burned (wand of fire) /
+  durable / dust Elbereth, rested to PT_CAMP_HP before every walk to the tune square, when hurt after a sea monster
+  showed, and instead of the low-HP pause; walks keep off squares beside water. FARM_THEN_ENTER: the crusher (and eels
+  from the base) runs until XL >= PT_FARM_XL and max HP >= PT_FARM_HP or its budgets, rests to PT_FARM_ENTER_HP, then
+  hands over to the front walk. KIT_PICKUP: one tonal instrument and every known scare monster scroll kept ahead of
+  thrown weapons/food, known scare scrolls never dropped, dropped ones never re-picked (blessed ones may come back
+  once: pickup.c), known-cursed floor ones left alone, and the dive takes such an item under it or within PT_KIT_DIST.
+  Tests (fakes): `python tests/test_castle_basecamp.py`, `python tests/test_castle_kit.py`.
+- **castle-lane v2 (PT_V2, acts only with CASTLE_PASSTUNE on; workspace `research/castle_debug.md`):** fixes from the
+  tc1 forensics of 17 lane games. Held by a sea monster -> Elbereth (a scared holder lets go) instead of ending the
+  lane; the Elbereth budgets count failed writes only; the crusher never raises on what the bridge can't touch
+  (passes_walls / noncorporeal: xorns, earth elementals, ghosts); the farm ends at XL >= PT_FARM_XL whatever the max
+  HP, or after PT_FARM_STALL turns without experience; on the walk to the tune square a land hostile next to us hands
+  the step to the survival layers (no digging under its blows); the walk gives up after PT_GO_TURNS; a hand-over
+  after a quiet crusher skips FRONT_V3's maze-mouth hold. Tests (fakes): `python tests/test_castle_lane_v2.py`.

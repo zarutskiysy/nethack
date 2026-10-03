@@ -11,7 +11,9 @@ from . import jf_config
 from . import power
 from . import castle_power
 from . import castle_cross
+from . import castle_treasury
 from . import castle_front
+from . import castle_tune
 from . import castle_landing
 from . import mino_guard
 from . import known_items
@@ -145,6 +147,23 @@ class ItemPriority(ItemPriorityBase):
                 if self.agent.character.role in [Character.RANGER, Character.ROGUE,
                                                  Character.SAMURAI, Character.TOURIST] and \
                         (item.is_launcher() or item.is_fired_projectile()):
+                    add_item(item)
+
+        # CASTLE_KIT_PICKUP (research/strong_castle.md phase 2): one tonal instrument (the castle's passtune) and every
+        # known scroll of scare monster (the castle's base camp, Gehennom) ahead of the thrown weapons and the food
+        if jf_config.CASTLE_KIT_PICKUP:
+            best = None
+            for item in items:
+                rank = castle_tune.instrument_rank(item)
+                if rank is None:
+                    continue
+                key = (rank, not (item in forced_items or self._carried(item)), item.unit_weight(with_content=False))
+                if best is None or key < best[0]:
+                    best = (key, item)
+            if best is not None:
+                add_item(best[1], count=1)
+            for item in items:
+                if power.is_known_scare(self.agent, item) and not power.kit_floor_dust(self.agent, item):
                     add_item(item)
 
         if self.agent.character.alignment == Character.LAWFUL:
@@ -1132,6 +1151,12 @@ class GlobalLogic:
             .preempt(self.agent, [
                 castle_front.strategy(self.dive),
             ])
+            # passtune (CASTLE_PASSTUNE, castle_tune.py): a tonal instrument on the castle's west side -> learn the
+            # drawbridge tune by Mastermind from a shore square beside the span, crush what comes onto the bridge, leave
+            # it down for the front door's walk in -- above the front door and the rush (a lift put on at once)
+            .preempt(self.agent, [
+                castle_tune.strategy(self.dive),
+            ])
             # valley-exit (LANDING_GUARD, castle_landing.py): a minotaur (or another big Elbereth-ignorer) at the castle
             # depth -- heal early, strike it frozen, zap the best known wand at it (beams, cold; other rays only with
             # room to die out) -- above the rush, which yields while its lift phase has items to try
@@ -1157,6 +1182,8 @@ class GlobalLogic:
                 # lift-ready (LIFT_KNOWN_RUSH): a known lasting lift on at once where castle arrivals land
                 castle_cross.known_rush_strategy(self.dive),
                 castle_cross.xorn_strategy(self.dive),
+                # CASTLE_WISH_FIRST (castle_treasury.py): the form ran out inside a castle tower -> on to its chest
+                castle_treasury.foot_strategy(self.dive),
                 # valley-exit (VALLEY_XORN): still a wall-walker in the Valley -> through its rock to the '>'
                 self.dive.valley_xorn(),
                 # ...out of the form in Gehennom with the wand and polymorph control -> a xorn again

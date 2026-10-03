@@ -1319,6 +1319,123 @@ TENGU_CORPSE_AGE = 25      # a tengu corpse older than this is left (CORPSE_MAX_
 # the trap door's Valley (0.691). Budgets 240 actions / 400 turns, HP >= 45%. Their ascension wish list is not
 # imported (it switched our teleport route off).
 CASTLE_TREASURY = True
+# CASTLE_WISH_FIRST (off pending a harness A/B; castle_treasury.py, research/castle_wish.md): the castle's wand of
+# wishing before the trap door, for every bot inside the walls. castle.des CONTAINER:('(',"chest"),not_trapped at one
+# of (04,02)/(58,02)/(04,14)/(58,14) (SHUFFLE), wand only (sp_lev.c delete_contents), locked 4 in 5 (mkobj.c; sp_lev's
+# default locked=0 keeps mksobj's roll), a cursed scroll of scare monster on top of it and a burned Elbereth under it:
+# the chest square is a melee refuge. Turns on:
+#  - all four towers (CASTLE_TREASURY searched only the first east one), nearest first, a tower whose chest square has
+#    been seen bare (floor glyph) or with a soldier standing on it (no scare scroll there) counted as checked, a tower
+#    whose chest square shows an object first;
+#  - a hostile on the way is fought (moat monsters routed around) instead of ending the detour; HP floor 20% / 5 HP,
+#    none on an unchecked chest square (scared monsters don't melee us there);
+#  - the lock: key > a wielded blade > any forceable weapon wielded (the dive's pick-axe: lock.c bashes, 2x its large
+#    die per turn) > a kick, from the tower floor rather than the moat-side wall (a kick hits the pile's top object --
+#    the scare scroll -- first, dokick.c);
+#  - on foot (the xorn form ran out in a tower): the chest of that tower, then the other tower on the same hallway
+#    (castle_treasury.foot_strategy).
+# Then the wand is zapped (the wish: WISH_TELEPORT_ROUTE's) and tele_route takes over: TC ring + cursed teleport scrolls
+# read on the castle -> Valley -> Dlvl ~45-50 (0.79-0.81) instead of the trap door's Valley (0.69).
+CASTLE_WISH_FIRST = False
+# CASTLE_PASSTUNE (off pending a harness A/B; castle_tune.py, research/castle_entry.md (c)): on the castle's west side
+# with a tonal instrument (flute, harp, bugle, tooled/frost/fire horn; an unknown horn last -- a horn of plenty plays
+# no tune) we stand on a shore square with the drawbridge span in our 3x3 ((04,07)/(04,09)/(04,08)), write Elbereth
+# (the eels beside it respect it) and play 5-note tunes ('Improvise?' n, music.c: no instrument effect, no ray) chosen by
+# a deterministic Mastermind solver on the 'N tumblers click and M gears turn' hints (~5.2 plays, at most ~8). The
+# right tune lowers the bridge; then a bounded crusher (raise it on whatever hostile stands on the span or in the
+# portcullis: crushed or drowned, the kill is ours; lower it again) and the bridge left down for the front door's walk
+# in (castle_front FRONT_V3 path even with FRONT_DOOR/FRONT_V3 off -- the walk, the hold, the towers' chest; pairs with
+# CASTLE_WISH_FIRST). Ends for good (the old castle behaviour) when held by a sea monster, PT_MAX_ADJACENT hostiles or
+# a minotaur or 2 Elbereth-ignorers next to us, a sea monster beside us with no Elbereth possible, deaf, contradicting
+# hints or the budgets; below PT_ABORT_HP it pauses for the survival layers (raises the bridge and stops if it is down).
+CASTLE_PASSTUNE = False
+PT_ABORT_HP = 0.35         # below this share of HP: pause (bridge up) / raise it and stop (bridge down)
+PT_RESUME_HP = 0.8         # a pause / a rest behind the raised bridge lasts until this share of HP
+PT_MAX_PAUSES = 3
+PT_REST_HP = 0.6           # in the crusher: below this, raise the bridge and rest behind it
+PT_REST_TURNS = 150        # rest steps (3 turns each) at most
+PT_MAX_ADJACENT = 3        # hostiles next to us on land (span/portcullis excepted while the crusher has them)
+PT_MAX_PLAYS = 12          # tune-search plays at most (the solver needs <= 8)
+PT_MAX_STEPS = 900         # lane steps at most
+PT_GO_BUDGET = 400         # steps to reach a tune square
+PT_ELBERETH_TRIES = 12
+PT_IMPAIRED_WAIT = 60      # steps waiting out confusion / stun / hallucination / blindness (they force improvising)
+PT_MAX_FIGHTS = 60
+PT_CRUSH = True            # the crusher loop (False: lower the bridge and hand over at once)
+PT_CRUSH_MAX = 20          # raises at most
+PT_CRUSH_TURNS = 400       # turns of crusher at most
+PT_CRUSH_WAIT = 20         # turns the lowered bridge waits for a victim before the hand-over
+# CASTLE_BASECAMP (off pending a harness A/B; castle_tune.py, research/strong_castle.md block 1): the passtune lane
+# makes the shore survivable before and while it plays (tw1: 18 of 19 lane starts died or quit before the tune square --
+# sharks, eels, 'held by a sea monster', minotaurs, low-HP pauses on the moat's edge).
+#  - a KNOWN scroll of scare monster is dropped on the tune square when we first stand there (monmove.c onscary: it
+#    scares everything but Rodney, minions, Angels, Riders and shopkeepers/priests at home -- minotaurs, @ soldiers and
+#    eels too; a scared monster never melees, dochug !scared); that square is the base: we rest on it when hurt
+#    (the bridge raised first) instead of pausing, strike what stays next to us (no hypocrisy: no Elbereth written
+#    there), and the minotaur / crowd / sea-monster aborts don't apply on it. It is never picked up again (pickup.c:
+#    an uncursed scroll picked up once turns to dust the next time). dive_logic's CASTLE_SCARE hold knows the spot.
+#  - without one, the camp is a west-courtyard square with no water beside it ((03,08) first: sea monsters can't leave
+#    the moat): Elbereth there (burned with a known wand of fire, else engraved with DURABLE_ELBERETH's blade when
+#    that flag is on, else dust) and a rest to PT_CAMP_HP before every walk to the tune square, after a sea monster
+#    was seen and HP fell below PT_CAMP_SEA_HP, and instead of the PT_ABORT_HP pause when nothing is next to us.
+#  - the walk to the tune square avoids squares beside water (cost PT_CAMP_WATER_COST each) where it can.
+CASTLE_BASECAMP = False
+PT_CAMP_HP = 0.9           # rest at the camp to this share of HP (and before stepping to the tune square)
+PT_CAMP_SEA_HP = 0.7       # at the tune square with a sea monster seen in the last PT_CAMP_SEA_TURNS: camp below this
+PT_CAMP_SEA_TURNS = 60
+PT_CAMP_REST_MAX = 200     # rest steps (search 5) per camp stay
+PT_CAMP_STAYS = 8          # camp stays at most
+PT_CAMP_WATER_COST = 8     # path cost of a square beside water (the tune square itself excepted)
+PT_CAMP_MAX_DIST = 15      # the camp must be this close by the known floor (else the old pause)
+# CASTLE_FARM_THEN_ENTER (off pending a harness A/B; castle_tune.py, research/strong_castle.md block 2): the castle's
+# score is banked on arrival, so the crusher (and, from a scare-monster base, the eels: exper.c +1000 xp for a wrapping
+# eel) farms experience until XL >= PT_FARM_XL and max HP >= PT_FARM_HP (HP >= PT_FARM_ENTER_HP), or PT_FARM_TURNS
+# turns / PT_FARM_RAISES raises / PT_FARM_IDLE turns with nothing coming over the lowered bridge -- only then the bridge
+# is left down for the front walk (FRONT_V3 -> towers -> CASTLE_WISH_FIRST -> tele_route).
+CASTLE_FARM_THEN_ENTER = False
+PT_FARM_XL = 11
+PT_FARM_HP = 100
+PT_FARM_ENTER_HP = 0.9
+PT_FARM_TURNS = 6000
+PT_FARM_RAISES = 300
+PT_FARM_IDLE = 600
+PT_FARM_MAX_STEPS = 12000  # lane steps at most while farming (PT_MAX_STEPS otherwise)
+PT_FARM_REST_TURNS = 1500  # rest steps behind the raised bridge at most while farming (PT_REST_TURNS otherwise)
+PT_FARM_EELS = True        # strike a sea monster next to us from the scare-monster base (never from Elbereth)
+PT_FARM_EEL_HP = 0.6       # ...only at this share of HP or more
+PT_FARM_FIGHTS = 600       # fights at most while farming (PT_MAX_FIGHTS otherwise)
+# PT_V2 (acts only with CASTLE_PASSTUNE on; research/castle_debug.md, the tc1 forensics of 17 lane games):
+#  - held by a sea monster: Elbereth (monmove.c distfleeck -> monflee -> release_hero: a scared holder lets go and
+#    doesn't attack) instead of ending the lane -- tc1 arc-hum 203 was grabbed on its first step onto (04,09), the
+#    lane quit, the old fight wielded a bullwhip and drowned the next turn;
+#  - the Elbereth budgets count failed writes only: an intact Elbereth under us resets them (tc1 wiz-elf 645 spent
+#    its 12 lifetime writes in ~1000 farm turns; the dust smudged, a jaguar came, the lane meleed it and died);
+#  - the crusher never raises on what dbridge.c automiss() spares (passes_walls / noncorporeal: xorns, earth
+#    elementals, ghosts): wiz-elf 645 made 175 raises in 950 turns on a xorn and earth elementals, so PT_FARM_IDLE
+#    never came;
+#  - the farm is done at XL >= PT_FARM_XL whatever the max HP (PT_FARM_HP 100 is out of a Wizard's reach: XL 11 /
+#    62 HP), or after PT_FARM_STALL crusher turns without experience -- soft ends: the crusher goes on until nothing
+#    has come over the lowered bridge for PT_CRUSH_WAIT turns (a quiet hand-over); the budgets still end it at once;
+#  - during the walk to the tune square a land hostile next to us hands the step to the survival layers (fight2,
+#    Elbereth rest, prayer) instead of digging on under its blows (castle._approach: kni-hum 600's horse, val-dwa
+#    212's xorn, wiz-elf 652's guardian naga) or walking on hurt beside the moat (arc-gno 206's shark);
+#  - the walk to the tune square gives up after PT_GO_TURNS turns (pri-elf 624 looped 4,500 turns on a web);
+#  - a hand-over after a quiet crusher (nothing came over the lowered bridge for PT_CRUSH_WAIT / PT_FARM_IDLE turns)
+#    skips FRONT_V3's maze-mouth hold and its lures back to it: the crusher already did the hold's job, and the mouth
+#    (-2,10) is in the west maze, the minotaur's ground (tc0 mon-hum 644 died there after the only hand-over).
+PT_V2 = True
+PT_GO_TURNS = 2000         # turns from the lane's start to reach a tune square at most (PT_V2)
+PT_FARM_STALL = 400        # crusher turns without an experience gain that end the farm (PT_V2)
+PT_HELD_TRIES = 8          # Elbereth writes / waits while held by a sea monster (PT_V2)
+# CASTLE_KIT_PICKUP (off pending a dev A/B; research/strong_castle.md block 3 / phase 2): the whole game keeps one tonal
+# instrument (flute, harp, bugle, tooled/frost/fire horn; an unknown horn) and every known scroll of scare monster
+# ahead of the thrown weapons and food in ItemPriority (weight-limited like the rest), known scare scrolls are never
+# dropped by arrange_items, a scroll that may be scare monster which we dropped is never picked up again unless it was
+# blessed in our pack, and a known-cursed one on the floor is left alone (pickup.c: blessed -> unblessed; uncursed and
+# never picked up -> marked; else it turns to dust). The dive also takes such an item under us or within PT_KIT_DIST
+# steps (no hostile within 7, HP >= 60%, not in a shop, never on the castle or Medusa's level).
+CASTLE_KIT_PICKUP = False
+PT_KIT_DIST = 8
 # CASTLE_PICK_MELEE (castle_cross._swap_for_fight; off pending a lift-suite A/B, research/deep_deaths.md castle section):
 # the castle's floating fights in the west maze (castle_cross._melee_adjacent, cl_route_step and _toward's blockers) wield
 # the 'best' melee weapon once after every dig, and the next dig's apply wields the pick again: two moves per interruption

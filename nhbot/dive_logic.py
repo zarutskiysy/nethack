@@ -982,6 +982,8 @@ class DiveLogic:
         self.castle = CastlePassage(self)  # castle_logic.py (jf_config.CASTLE_PASSAGE)
         from .castle_front import FrontDoor
         self.front = FrontDoor(self)       # castle_front.py (jf_config.FRONT_DOOR)
+        from .castle_tune import PassTune
+        self.tune = PassTune(self)         # castle_tune.py (jf_config.CASTLE_PASSTUNE)
         self._dwarf_seen = (None, [])      # (level key, [(y, x)]) of dwarf glyphs at the last update
         self._diggers = {}                 # level key -> {(y, x): turn} where a dwarf was seen digging
         self._crash_turn = {}              # level key -> last turn 'You hear crashing rock.'
@@ -1849,6 +1851,11 @@ class DiveLogic:
 
         # PREP_DIVE_PICKUP: a ring, wand, amulet, potion or scroll in view a few steps away -> take it first
         if self.prep_dive_pickup():
+            return
+
+        # CASTLE_KIT_PICKUP: a tonal instrument (none carried yet) or a known scroll of scare monster under us or a
+        # few steps away -> take it
+        if self.kit_dive_pickup():
             return
 
         if self.should_sweep_portal():
@@ -3363,6 +3370,108 @@ class DiveLogic:
             self._prep_pickup_target = (level.key(), (y, x))
             self._prep_pickup_since = bl.time
         self._task('walk to an item (prep)')
+        agent.go_to(y, x)
+        return True
+
+    def _kit_wanted(self, objs):
+        """CASTLE_KIT_PICKUP: what an item of these possible objects is to the kit: 'instrument' (a tonal one, or an
+        unknown horn; only while none is carried), 'scare' (a known scroll of scare monster) or None."""
+        from .castle_tune import PLENTY, TONAL
+        objs = set(objs)
+        if not objs:
+            return None
+        if objs == {power.SCARE}:
+            return 'scare'
+        if objs <= TONAL | {PLENTY} and objs != {PLENTY} and not self._kit_has_instrument():
+            return 'instrument'
+        return None
+
+    def _kit_has_instrument(self):
+        from .castle_tune import instrument_rank
+        return any(instrument_rank(it) in (0, 1) for it in self.agent.inventory.items)
+
+    def _kit_item_wanted(self, item):
+        agent = self.agent
+        if item.shop_status != Item.NOT_SHOP or agent.inventory.dropped_here(item):
+            return False
+        if power.is_known_scare(agent, item):
+            return True
+        if item.category != nh.TOOL_CLASS:
+            return False
+        from .castle_tune import instrument_rank
+        return instrument_rank(item) is not None and not self._kit_has_instrument()
+
+    def kit_dive_pickup(self):
+        """CASTLE_KIT_PICKUP (research/strong_castle.md phase 2): the dig-dive takes a tonal instrument (when it has
+        none: the castle's passtune, CASTLE_PASSTUNE) or a known scroll of scare monster (CASTLE_BASECAMP, Gehennom)
+        lying under us, or walks to one in view within PT_KIT_DIST steps -- Dungeons/Mines levels, no hostile within
+        7, HP >= 60%, not Weak, never in a shop, never on the castle or Medusa's level. arrange_items' item priority
+        (which keeps both ahead of thrown weapons and food under the flag) decides what stays. True: acted."""
+        if not jf_config.CASTLE_KIT_PICKUP or not self.diving or self.rescue:
+            return False
+        agent = self.agent
+        level = agent.current_level()
+        bl = agent.blstats
+        if level.dungeon_number not in (Level.DUNGEONS_OF_DOOM, Level.GNOMISH_MINES) or self.castle.active() or \
+                self.on_medusa_level():
+            return False
+        if bl.hunger_state >= Hunger.WEAK or bl.hitpoints < 0.6 * bl.max_hitpoints or self.levitating():
+            return False
+        for m in agent.get_visible_monsters():
+            if max(abs(int(m[1]) - bl.y), abs(int(m[2]) - bl.x)) <= 7:
+                return False
+        if not hasattr(self, '_kit_done'):
+            self._kit_done = {}
+            self._kit_target = None
+            self._kit_since = 0
+        done = self._kit_done.setdefault(level.key(), set())
+        here = (int(bl.y), int(bl.x))
+        if level.shop_interior[here] or level.shop[here]:
+            return False
+        below = agent.inventory.items_below_me
+        if below and here not in done and any(self._kit_item_wanted(i) for i in below):
+            done.add(here)
+            self._task('pick up (kit)')
+            agent.log(f'KIT pickup at {here}: {[i.text for i in below if self._kit_item_wanted(i)][:4]}')
+            agent.inventory.pickup_and_drop_items().run()
+            return True
+        if jf_config.PT_KIT_DIST <= 0:
+            return False
+        glyphs = agent.glyphs
+        mask = np.zeros(glyphs.shape, bool)
+        cand = np.unique(glyphs[(glyphs >= nh.GLYPH_OBJ_OFF) & (glyphs < nh.GLYPH_OBJ_OFF + nh.NUM_OBJECTS)])
+        for g in cand:
+            g = int(g)
+            if not nh.glyph_is_object(g):
+                continue
+            try:
+                objs = agent.inventory.item_manager.possible_objects_from_glyph(g)
+            except AssertionError:
+                continue
+            if self._kit_wanted(objs) is not None:
+                mask |= glyphs == g
+        if not mask.any():
+            return False
+        dis = agent.bfs()
+        mask &= (dis > 0) & (dis <= jf_config.PT_KIT_DIST) & ~level.shop_interior & ~level.shop
+        for y, x in done:
+            mask[y, x] = False
+        for (key, (y, x), _) in agent.inventory.dropped_scrolls:
+            if key == level.key():
+                mask[y, x] = False   # (our own drops: never picked up again)
+        if not mask.any():
+            return False
+        ys, xs = mask.nonzero()
+        i = int(np.argmin(dis[ys, xs]))
+        y, x = int(ys[i]), int(xs[i])
+        if self._kit_target == (level.key(), (y, x)) and bl.time - self._kit_since > jf_config.PT_KIT_DIST * 3:
+            done.add((y, x))   # couldn't get there in time
+            return False
+        if self._kit_target != (level.key(), (y, x)):
+            self._kit_target = (level.key(), (y, x))
+            self._kit_since = bl.time
+            agent.log(f'KIT walking to {(y, x)} ({int(dis[y, x])} steps)')
+        self._task('walk to an item (kit)')
         agent.go_to(y, x)
         return True
 
