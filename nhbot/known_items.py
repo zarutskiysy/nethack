@@ -259,6 +259,10 @@ class KnownItemsGuard:
             ray_ok = self._free_run_behind(target, dy, dx) >= jf_config.RAY_CRIT_RUN
         name = getattr(target[3], 'mname', '?')
         wand, wname = mino._wand(('sleep',))
+        if jf_config.HEA_SLEEP_ZAP:
+            # hea_kit.HeaKitGuard (above us) owns the wand of sleep: it checks the target's resistance and our own
+            # bounce (KNOWN_ITEMS zapped zombies, which resist, and slept a Healer beside a hill orc at critical HP)
+            wand = None
         if wand is None and critical:
             wand, wname = mino._sleep_or_death(), 'sleep or death'
         if wand is not None and ray_ok:
