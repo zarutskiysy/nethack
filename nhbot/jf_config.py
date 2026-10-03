@@ -1790,7 +1790,7 @@ WIZ_KIT_BOOST = False
 WIZ_BOOST_POTIONS = ('gain level', 'gain energy', 'gain ability')
 # WIZ_RING_SAFE: above the ring module's MAX_DEPTH and out of a fight, put an always-wear ring (ring_amulet_config's list
 # + WIZ_RING_EXTRA) back on when it is off and we are not Weak (the dig-dive never runs gather_items, and the hunger
-# shedding's put-back matched the inventory text '(on left hand)': 14 of 64 such rings were worn at Dlvl 20+); wear a
+# shedding's put-back matched the inventory text '(on left hand)': 16 of 64 such rings (slow digestion aside) were worn at Dlvl 20+); wear a
 # known ring of regeneration below WIZ_REGEN_ON of max HP, take it off at WIZ_REGEN_OFF or when Weak
 WIZ_RING_SAFE = False
 WIZ_RING_EXTRA = ('stealth',)

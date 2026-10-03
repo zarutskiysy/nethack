@@ -13,7 +13,7 @@ current-code dev games of g0w (5 Wizard identities x 100 seeds):
     the 225 grind deaths (45% of games) are mostly melee at XL 5-7 (rothes, giant ants, hill orcs, dwarves) with the
     Pw spent;
   * the 9 Dlvl-20+ dumps with a wand of speed monster had never zapped it (intrinsic speed: zap.c zapyourself);
-  * of the always-wear rings (free action, poison resistance, gain Str/Con) held at Dlvl 20+, 14 of 64 were worn: the
+  * of the always-wear rings (free action, poison resistance, gain Str/Con) held at Dlvl 20+, 16 of 64 were worn: the
     dig-dive never runs gather_items, and the hunger shedding's put-back matched the ring by its inventory text, which
     still said '(on left hand)'. Rings of regeneration (17) and stealth (17) were never worn;
   * gain level 11, gain energy 22, gain ability 21 potions and 11 scrolls of enchant armor were still carried unused.
