@@ -1435,6 +1435,8 @@ class Agent:
             return True
         if self._long_faint_prayer_due():
             return True
+        if self._faint_risk_prayer_due():
+            return True
         if not jf_config.STARVE_CLOCK:
             if self.is_safe_to_pray(self._faint_prayer_gap()):
                 return True
@@ -1501,6 +1503,45 @@ class Agent:
         if not self.is_safe_to_pray(jf_config.TOUR_FAINT_LONG_GAP):
             return False
         self._pray_reason = f'faint-long spell={self.blstats.time - since}'
+        return True
+
+    def _faint_risk_target_gap(self, gap):
+        """The gap at which the fixed tour rules would pray during this Fainting spell: TOUR_FAINT_PRAYER_GAP (or
+        its per-XL entry), or earlier once TOUR_FAINT_LONG_TURNS have passed (at a gap of at least
+        TOUR_FAINT_LONG_GAP)."""
+        target = self._faint_prayer_gap()
+        if jf_config.TOUR_FAINT_LONG_TURNS:
+            bl = self.blstats
+            since = self._fainting_since if self._fainting_since is not None else bl.time
+            long_at = gap + max(0, since + jf_config.TOUR_FAINT_LONG_TURNS - bl.time)
+            target = min(target, max(long_at, jf_config.TOUR_FAINT_LONG_GAP))
+        return target
+
+    def _faint_risk_prayer_due(self):
+        """FAINT_RISK_PRAYER (grind-safe): pray now when rnz(350)'s failure risk at the current gap is below the risk
+        of holding on, Fainting, until the fixed rule's gap (see jf_config). Tour only, never after a failure."""
+        if not jf_config.FAINT_RISK_PRAYER or self.prayer_failed or self.global_logic.dive.diving:
+            return False
+        bl = self.blstats
+        if bl.hunger_state < Hunger.FAINTING:
+            return False
+        if self.last_prayer_turn is None:
+            return False   # the first prayer: u_init's fixed 300 timeout, the fixed rules handle it
+        gap = bl.time - self.last_prayer_turn
+        if gap < jf_config.FAINT_RISK_MIN_GAP:
+            return False
+        target = self._faint_risk_target_gap(gap)
+        if gap >= target:
+            return False   # the fixed rule prays now anyway
+        h = (jf_config.FAINT_RISK_H_D1 if bl.depth <= 1 else jf_config.FAINT_RISK_H_DEEP) / 100.0
+        xl = bl.experience_level
+        p_now = 1.0 - rnz_cdf(350, gap + 200, xl)
+        p_then = 1.0 - rnz_cdf(350, target + 200, xl)
+        if p_now > h * (target - gap) / 100.0 + p_then:
+            return False
+        if not self.is_safe_to_pray(gap - 1):
+            return False   # the model's vetoes (anger, Luck, record) and the dive's holds
+        self._pray_reason = f'faint-risk gap={gap} target={target} p_now={p_now:.3f} p_then={p_then:.3f}'
         return True
 
     def _starvation_near(self):

@@ -427,6 +427,29 @@ DEEP_PRAY_FIRST_DEPTH = 10
 # i.e. chaos around a small gain). Candidate values: 350 / 1200.
 TOUR_FAINT_LONG_TURNS = 350
 TOUR_FAINT_LONG_GAP = 1200
+# FAINT_RISK_PRAYER (grind-safe, off; research/grind_safe.md): in the tour, a Fainting hero prays as soon as the prayer's
+# failure risk is below the risk of holding on until the fixed rule would pray. Holding costs FAINT_RISK_H_D1 (Dlvl 1)
+# / FAINT_RISK_H_DEEP (Dlvl 2+) of a death per 100 Fainting turns (cur+same devruns, 4,916 tour Fainting spells: 73
+# deaths in 790k Dlvl-1 spell turns = 0.92%/100, 55 in 295k deeper = 1.86%/100, flat over the spell's age); the
+# prayer's risk is rnz(350) at the gap (pray.c: answered iff the timeout is <= 200 in major trouble). Both count per
+# useful (non-hold) turn: a prayer resets nutrition to 900 either way, so praying at the gap g instead of the rule's
+# gap T trades P_fail(g) for h * (T - g) / 100 + P_fail(T) -- worth it from gap ~1050 on Dlvl 1, ~850 deeper.
+# FAINT_RISK_MIN_GAP is a floor (measured hunger-prayer failure at gaps 1000-1199: 2.8-6.2%, rnz says 3.9-5.4%);
+# the model's vetoes (is_safe_to_pray: anger, Luck, record, holds) still apply.
+FAINT_RISK_PRAYER = False
+FAINT_RISK_H_D1 = 0.92
+FAINT_RISK_H_DEEP = 1.86
+FAINT_RISK_MIN_GAP = 1000
+# PRAYERLESS_CAUTION (grind-safe, off): in the tour, while an HP prayer would not be answered (no prayer for
+# PRAYERLESS_GAP turns: P(rnz(350) <= gap + 200) is ~91% at 800), the Elbereth rest starts below PRAYERLESS_REST_BELOW of
+# max HP instead of ELBERETH_REST_BELOW (0.4), and the lone-weak exemption (fight a lone mlevel <= 2 monster instead of
+# resting) holds only while the monster can't kill us within LONE_WEAK_TURNS (LONE_WEAK_THREAT's test). Evidence: the
+# grind spends 41% of its turns within 600 turns of a prayer (mostly hunger prayers) but takes 57% of its non-hunger
+# deaths there (hazard ratio 1.39 vs 0.67-0.79 with a prayer available; 563 deaths, cur+same devruns): rothes, hill
+# orcs, ants and were-creatures take an XL 5-7 hero from 80% HP to dead with the emergency prayer used up by food.
+PRAYERLESS_CAUTION = False
+PRAYERLESS_GAP = 800
+PRAYERLESS_REST_BELOW = 0.6
 # --- grind-audit: dives stuck on one level (dive_logic._stall_*; all off) ---
 # cand-g fresh sets (270 pinned games): 10 of 231 planned dives stayed 1500+ turns on Dlvl 1-4 and 6 of them died
 # there -- the dive hunger prayer every ~900 turns fails sooner or later (ledger F090). The BFS never enters a boulder
