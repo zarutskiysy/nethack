@@ -1349,6 +1349,26 @@ CASTLE_WISH_FIRST = False
 # a minotaur or 2 Elbereth-ignorers next to us, a sea monster beside us with no Elbereth possible, deaf, contradicting
 # hints or the budgets; below PT_ABORT_HP it pauses for the survival layers (raises the bridge and stops if it is down).
 CASTLE_PASSTUNE = False
+# VALLEY_DIVE (off pending a dev A/B; research/valley_dive.md): once in Gehennom (dnum 1), every turn goes to depth.
+#  - the dive phase starts at once in Gehennom (a safety net: a controlled jump read before the dive phase would leave
+#    the tour in charge there -- no valley_step, no walk; all 21 stranded dev Valley games were already diving);
+#  - the Valley (hardfloor, gehennom.des:8): valley_walk's walk to its '>' at map (01,01) owns every move (as
+#    VALLEY_WALK), the old valley_step below it;
+#  - every Gehennom level below it: straight to descend() -- dig down at once with the pick-axe / wand of digging, else
+#    the stairs -- skipping the dive's detours (item pickups, full explores, farming, camps, dwarf searches). A hole
+#    lands us in the level's 'down' TELEPORT_REGION (do.c goto_level -> u_on_rndspot -> dndest), which on every special
+#    level (juiblex, orcus, asmodeus, baalz, wizard1-3, fakewiz) is a maze edge outside the lair. The three Wizard's
+#    Tower levels are FLAGS hardfloor (yendor.des:9/95/149) like the Valley: the pick-axe digs a pit, then 'too hard to
+#    dig' marks the level undiggable and descend() looks for the '>' (anywhere outside the tower); the vibrating-square
+#    level (Invocation_lev, dungeon.c Can_dig_down) has no '>' -- that is the end of the dive;
+#  - stop at VALLEY_DIVE_MAX_DEPTH (Dlvl 50, the top of the progress table: deeper levels bank nothing);
+#  - safety: prayer and Elbereth do nothing in Gehennom (pray.c:1987 'Since you are in Gehennom...', monmove.c onscary
+#    '|| Inhell'), so the layers there are fight2, the Valley's '<' retreat, gehennom_escape (a wand of digging down) and,
+#    with VALLEY_DIVE_SCARE, GEHENNOM_SCARE's hold on a known scroll of scare monster (it scares everything but
+#    minions, Riders, Rodney and the priest in his temple -- @ and minotaurs too).
+VALLEY_DIVE = False
+VALLEY_DIVE_MAX_DEPTH = 50
+VALLEY_DIVE_SCARE = True
 PT_ABORT_HP = 0.35         # below this share of HP: pause (bridge up) / raise it and stop (bridge down)
 PT_RESUME_HP = 0.8         # a pause / a rest behind the raised bridge lasts until this share of HP
 PT_MAX_PAUSES = 3
