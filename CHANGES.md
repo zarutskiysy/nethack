@@ -19,6 +19,8 @@
   verified tier agrees).
 - **v10d**: integ (v10c + all flag branches, every flag off by default) with three Medusa flags on: ELBERETH_ATTACKED_REWRITE,
   MEDUSA_REENTRY, MEDUSA_STANDOFF (vkurenkov's re-entry lane + our rewrite): +0.0074 +- 0.0023 over 419 paired Medusa replays.
+- **v10e**: Healers on the Dlvl-1 grind (dev +0.091 on human Healers; fresh-seed re-run +0.065 +- 0.026 on both
+  races).
 - **eL1fe's fixes** (ported from eL1fe/nethacker@cfc3828, its `dag25` engine = this same base): the spell-direction fix
   (`Agent.cast` sent the compass string as keys: every aimed cast was wasted), force bolt for Wizards (from
   CleverShovel 0d1fb22: never into shops, never flying on into a pet), healing spells for any role that knows them,

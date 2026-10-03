@@ -117,3 +117,8 @@ OVERRIDES["cav-gno"] = {"jf_config.ROLE_GRIND_LEVELS": {"Rogue": {}, "Knight": {
 # starting gold. Off until the dev A/B; nhbot gates it to Healers and Tourists itself (jf_config.BUY_PROT_ROLES). A/B with
 # JF_ROLE_CFG='{"hea":{"jf_config.BUY_PROTECTION":true},"tou":{"jf_config.BUY_PROTECTION":true}}'; to ship it for an
 # identity that wins, add e.g. OVERRIDES["hea-gno"] = {"jf_config.BUY_PROTECTION": True} here.
+
+# v10e: per-identity config
+# Healers on the Dlvl-1 grind: dev +0.091 (hea-hum, 60 pairs) and fresh-seed re-run +0.065 +- 0.026 (98 pairs, both
+# races)
+OVERRIDES["hea"] = {"jf_config.ROLE_GRIND_LEVELS": {"Rogue": {}, "Knight": {}, "Tourist": {}, "Priest": {}, "Healer": {}}}
