@@ -893,6 +893,7 @@ class DiveLogic:
         self.dive_start_turn = None     # DIVE_TOOL_HUNGER_GAP: the turn the dive phase began (None: set by a scenario)
         self.rescue = False                # the dive began as a rescue from a failed Dlvl 1 grind
         self.pick_trip = False             # the grind's detour to the Mines for a pick-axe (PICK_TRIP_XL)
+        self.prot_trip = False             # the grind's detour to the Minetown temple (jf_config.BUY_PROTECTION)
         self.undiggable = set()            # level keys where the floor is too hard to dig
         self._hp_history = []              # (turn, hp) of the last few turns
         self._status_logged = -1
@@ -2950,7 +2951,9 @@ class DiveLogic:
         branch '>' (go_to_mines), else explore this level only until a second '>' shows up, else go down the
         main '>'. Yields once the trip is in the Mines: the tour goes on to its target level from there."""
         agent = self.agent
-        if not FAST_BRANCH or not self.pick_trip or self.diving:
+        # BUY_PROTECTION: the protection trip (protect_buy.py) takes the same direct way to the Mines
+        prot = self.prot_trip and jf_config.BUY_PROT_FAST_BRANCH
+        if not (FAST_BRANCH and self.pick_trip or prot) or self.diving:
             yield False
         level = agent.current_level()
         if level.dungeon_number != Level.DUNGEONS_OF_DOOM or agent.blstats.depth > MINES_BRANCH_MAX_DEPTH:

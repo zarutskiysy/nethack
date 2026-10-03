@@ -112,3 +112,8 @@ OVERRIDES["ran"] = {"jf_config.UNSEEN_PET_GUARD": False}
 # gnomish Cavemen: the Dlvl-1 grind (an empty level map) instead of the deep grind, +0.073 +- 0.022 over 120 pairs
 # (v8ab +0.060); the other roles keep their default entries
 OVERRIDES["cav-gno"] = {"jf_config.ROLE_GRIND_LEVELS": {"Rogue": {}, "Knight": {}, "Tourist": {}, "Priest": {}, "Caveman": {}}}
+
+# BUY_PROTECTION (nhbot/protect_buy.py, research/protect_buy.md): the early Minetown-temple trip that buys AC with the
+# starting gold. Off until the dev A/B; nhbot gates it to Healers and Tourists itself (jf_config.BUY_PROT_ROLES). A/B with
+# JF_ROLE_CFG='{"hea":{"jf_config.BUY_PROTECTION":true},"tou":{"jf_config.BUY_PROTECTION":true}}'; to ship it for an
+# identity that wins, add e.g. OVERRIDES["hea-gno"] = {"jf_config.BUY_PROTECTION": True} here.

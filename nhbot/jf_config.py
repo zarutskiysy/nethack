@@ -2001,6 +2001,25 @@ QUEST_DIVE_DEPTH = 5            # deepest quest level the scorer credits (progre
 QUEST_DIVE_MIN_HP = 0.5         # below this HP fraction stop descending (rest/flee logic runs first) and climb out
 QUEST_DIVE_TURNS = 5000         # whole descent budget, from the first step on Home 1
 QUEST_DIVE_LEADER_TURNS = 600   # Home 1: turns spent finding/reaching the leader before trying the '>' anyway
+# BUY_PROTECTION (protect_buy.py, research/protect_buy.md): from the first turn, while XL <= BUY_PROT_MAX_XL and gold >=
+# 400*XL, the tour detours to the Minetown temple (Mines 3-4) and #chats the peaceful priest, offering 400*XL per chat
+# while the gold lasts: priest.c gives 2-4 AC the first time and +1 per further donation (a Healer's 1001-2000 gold at
+# XL 1: 4-7 AC). Then the normal plan resumes. Healers (gnomes: peaceful Mines) and Tourists only (BUY_PROT_ROLES);
+# off pending the dev A/B.
+BUY_PROTECTION = False
+BUY_PROT_ROLES = ('Healer', 'Tourist')  # role names (None: every role with the gold)
+BUY_PROT_MAX_XL = 3                 # the trip starts only at this XL or below (each donation costs 400*XL)
+BUY_PROT_MIN_DONATIONS = 1          # ... and with gold for this many donations
+BUY_PROT_TURNS = 5000               # the whole trip, from its start to the last donation
+BUY_PROT_LEVEL_TURNS = 400          # turns on Mines 3 (or 4) without a sign of the town rule it out
+BUY_PROT_TOWN_TURNS = 1500          # turns in Minetown without reaching the priest end the trip
+BUY_PROT_ABORT_HP = 0.3             # HP below this fraction of max before the town ends the trip (0: off)
+BUY_PROT_CHAT_HP = 0.5              # no walk to the priest / chat below this HP fraction (the rest comes first)
+BUY_PROT_WALK_STEPS = 8             # steps toward the (moving) priest before re-planning
+BUY_PROT_ORC_TOWN_HOSTILES = 3      # hostile orcs in view in a priestless town (Orcish Town) end the trip (0: off)
+BUY_PROT_MAGIC_MAP = True           # read a known magic mapping scroll on Mines 3-4 to find the temple (Tourists)
+BUY_PROT_FAST_BRANCH = True         # the trip takes FAST_BRANCH's direct way to the Mines (dive.trip_branch_strategy)
+BUY_PROT_ANYTIME = False            # also donate outside the trip (any later temple visit with 400*XL gold)
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
