@@ -4219,6 +4219,15 @@ class DiveLogic:
             yield False   # nothing to run from: the dive plan digs as usual
         if monsters and self.prep_mid_level() and self._prep_calm(monsters):
             yield False   # PREP_MID: an ordinary fight is fought (fight2) -- dig out only when it isn't
+        if jf_config.STAIRS_FIRST and monsters and not blind_dig and self.digging_tool() is not None and \
+                not self.should_sweep_portal():
+            # STAIRS_FIRST: hostiles in view and no dig started here -- a '>' we reach before any of them reaches
+            # our path takes us off the level (and away from every monster that doesn't follow) in d+1 turns
+            target = self._stairs_first_target(monsters)
+            if target is not None:
+                yield True
+                self._stairs_first_go(target, escape=True)
+                return
         if DIG_ESCAPE and level.dungeon_number != GEHENNOM:
             action = self._escape_next()
             if action is None or (blind_dig and action[0] not in self._blind_actions()):
@@ -7270,6 +7279,12 @@ class DiveLogic:
         # pit we dug: climbing out takes turns, the hole only 4 more (dsafe-A jf14 s5 thrashed between its pit
         # and a '>' 3 squares away under a centaur's crossbow bolts: 'You are still in a pit' x6)
         dis = agent.bfs()
+        if jf_config.STAIRS_FIRST and tool is not None and not spend:
+            # STAIRS_FIRST: a '>' (or known trap door) within STAIRS_FIRST_MAX_STEPS beats ~26 turns of digging
+            target = self._stairs_first_target()
+            if target is not None:
+                self._stairs_first_go(target)
+                return True
         if not (DIG_ESCAPE and tool is not None and self._in_own_pit()):
             for d, _, _, kind in self.down_targets():
                 if kind == 'stairs' and d <= DIG_STAIRS_RADIUS:
@@ -7664,18 +7679,27 @@ class DiveLogic:
                 return
             self.exploration(None).until(agent, self._budgeted(lambda: bool(self.down_targets()))).run()
             return
+        self._go_down(targets[0])
 
-        _, y, x, kind = targets[0]
+    def _go_down(self, target, max_steps=None, escape=False):
+        """Walk toward the way down target = (distance, y, x, 'stairs' | 'trap') and take it once there (descend,
+        STAIRS_FIRST). max_steps: steps per call (a preempting caller re-checks its plan every step); escape: hostiles
+        in view -- no rest at the stairs, and no crowded-arrival retreat back up into them."""
+        agent = self.agent
+        _, y, x, kind = target
         if kind == 'stairs':
             if (agent.blstats.y, agent.blstats.x) != (y, x):
-                agent.go_to(y, x)
+                agent.go_to(y, x, max_steps=max_steps)
                 return
-            if self.rest_if_hurt():
+            if not escape and self.rest_if_hurt():
                 return
             agent.log(f'DIVE going down stairs at {(y, x)}')
             above = (agent.current_level().key(), (y, x))
             if ARRIVAL_FIX:
                 self._arrival_pending = (above[0], above[1], agent.blstats.time)
+            if escape:
+                # (set before the move, whose update runs the preempt checks on the new level)
+                self._crowd_retreats[above] = self._crowd_retreats.get(above, 0) + 1
             agent.move('>')
             self._arrived = (agent.current_level().key(), agent.blstats.time, above)
             return
@@ -7684,7 +7708,7 @@ class DiveLogic:
         if TRAPDOOR_PLUNGE and (agent.blstats.y, agent.blstats.x) == (y, x):
             # standing on it ('You escape a trap door.'): go_to(stop_one_before) asserted on our own square, 25
             # times at the end of a jf26 s10 dive and 10 in jf27 s0; '>' plunges in (do.c dodown: uescaped_shaft)
-            if self.rest_if_hurt():
+            if not escape and self.rest_if_hurt():
                 return
             key = agent.current_level().key()
             agent.log(f'DIVE plunging into the trap door under us at {(y, x)}')
@@ -7694,11 +7718,131 @@ class DiveLogic:
                 self._dead_traps.add((key, (y, x)))   # can't go down here (levitating...): don't retry it
             return
         if not utils.adjacent((agent.blstats.y, agent.blstats.x), (y, x)):
-            agent.go_to(y, x, stop_one_before=True)
+            agent.go_to(y, x, stop_one_before=True, max_steps=max_steps)
             return
-        if self.rest_if_hurt():
+        if not escape and self.rest_if_hurt():
             return
         self.step_onto(y, x, 'trap door')
+
+    # ------------------------------------------------------------ STAIRS_FIRST
+
+    def _stairs_first_level_ok(self):
+        """STAIRS_FIRST (jf_config) may act here: diving on the Dungeons of Doom from STAIRS_FIRST_MIN_DEPTH, the level
+        below not (possibly) Medusa's, not the castle, the Valley or the level above the raven island; not a dwarf
+        (its hole takes ~7 turns), and not levitating, blind, confused, stunned or hallucinating."""
+        agent = self.agent
+        level = agent.current_level()
+        if not (jf_config.STAIRS_FIRST and self.diving) or level.dungeon_number != Level.DUNGEONS_OF_DOOM or \
+                agent.blstats.depth < jf_config.STAIRS_FIRST_MIN_DEPTH:
+            return False
+        if agent.character.race == Character.DWARF:
+            return False
+        below = int(level.level_number) + 1
+        limit = int(self.medusa_level[1]) if self.medusa_level is not None else MEDUSA_MIN_DEPTH
+        if below >= limit:
+            return False
+        if self.castle.active() or self.in_valley() or self._raven_level_below() or self.levitating():
+            return False
+        prop = agent.character.prop
+        return not (prop.blind or prop.confusion or prop.stun or prop.hallu)
+
+    def _stairs_first_target(self, monsters=None):
+        """STAIRS_FIRST: the nearest way down (steps, y, x, 'stairs' | 'trap') within STAIRS_FIRST_MAX_STEPS that we
+        reach safely (_stairs_first_safe), while no dig has started on this level (none of our pits here, no
+        apply of the pick yet); else None."""
+        if not self._stairs_first_level_ok():
+            return None
+        agent = self.agent
+        level = agent.current_level()
+        key = level.key()
+        if self._in_own_pit() or self._dig_tries.get(key, 0) > 0:
+            return None
+        bl = agent.blstats
+        here = (int(bl.y), int(bl.x))
+        limit = jf_config.STAIRS_FIRST_MAX_STEPS
+        dis = agent.bfs()
+        targets = []
+        for y, x in zip(*utils.isin(level.objects, G.STAIR_DOWN).nonzero()):
+            p = (int(y), int(x))
+            if 0 <= dis[p] <= limit and self._stairs_ok(level, *p) and \
+                    self._avoid_stairs_until.get((key, p), -1) <= bl.time:
+                targets.append((int(dis[p]), p[0], p[1], 'stairs'))
+        if jf_config.STAIRS_FIRST_TRAPS:
+            # a digger has no XP gate (should_explore_fully), so the levels a trap door skips are simply banked
+            for y, x in zip(*utils.isin(level.objects, FALL_TRAPS).nonzero()):
+                p = (int(y), int(x))
+                if (key, p) in self._dead_traps or \
+                        (getattr(level, 'shop', None) is not None and level.shop[p]):
+                    continue   # (a fall out of a shop: the shopkeeper grabs the pack, as for a dug hole)
+                d = 0 if p == here else self._neighbour_distance(dis, *p)
+                if d is not None and (p == here or d + 1 <= limit):
+                    targets.append((0 if p == here else int(d) + 1, p[0], p[1], 'trap'))
+        if not targets:
+            return None
+        if monsters is None:
+            monsters = agent.get_visible_monsters()
+        for target in sorted(targets):
+            if self._stairs_first_safe(target, monsters, dis):
+                return target
+        return None
+
+    def _stairs_first_mobile(self, monsters):
+        """The hostiles in view that can come at us: not the sessile/passive ones fight2 never melees."""
+        passive = set(_only_ranged_monsters())
+        return [m for m in monsters if getattr(m[3], 'mname', 'unknown') not in passive and
+                getattr(m[3], 'mmove', 12) > 0]
+
+    def _stairs_first_safe(self, target, monsters, dis):
+        """STAIRS_FIRST: the walk to target is safe -- no mobile hostile next to us (free hits all the way), and none
+        that can reach (be next to) the square we stand on after i steps within i turns at its speed; an
+        Elbereth-ignorer (@, elves, minotaurs, A) with one turn to spare, so it is never nearer the '>' than us."""
+        agent = self.agent
+        bl = agent.blstats
+        mobile = self._stairs_first_mobile(monsters)
+        if not mobile:
+            return True
+        here = (int(bl.y), int(bl.x))
+        if any(max(abs(int(m[1]) - here[0]), abs(int(m[2]) - here[1])) <= 1 for m in mobile):
+            return False
+        _, y, x, kind = target
+        if (y, x) == here:
+            path = []
+        elif kind == 'stairs':
+            path = [tuple(int(v) for v in p) for p in agent.path(here[0], here[1], y, x, dis=dis)[1:]]
+        else:
+            # to the nearest neighbour of the trap door, then onto it
+            best = None
+            for ny, nx in agent.neighbors(y, x, shuffle=False):
+                if dis[ny, nx] != -1 and (best is None or dis[ny, nx] < dis[best]):
+                    best = (int(ny), int(nx))
+            if best is None:
+                return False
+            path = [] if best == here else \
+                [tuple(int(v) for v in p) for p in agent.path(here[0], here[1], best[0], best[1], dis=dis)[1:]]
+            path.append((y, x))
+        for m in mobile:
+            speed = max(int(getattr(m[3], 'mmove', 12)), 1)
+            spare = 1 if self._ignores_elbereth(m[3]) else 0
+            for i, (py, px) in enumerate(path, start=1):
+                # turns it needs to stand next to that square vs the turns we need to get there (and step on)
+                need = (max(abs(int(m[1]) - py), abs(int(m[2]) - px)) - 1) * 12 / speed
+                if need <= i + spare:
+                    return False
+        return True
+
+    def _stairs_first_go(self, target, escape=False):
+        """STAIRS_FIRST: toward target (one step at a time with hostiles in view, so the plan is re-checked), or down."""
+        agent = self.agent
+        level = agent.current_level()
+        d, y, x, kind = target
+        self._task('stairs first')
+        mark = (level.key(), (y, x))
+        if mark not in self.__dict__.setdefault('_stairs_first_logged', set()):
+            self._stairs_first_logged.add(mark)
+            bl = agent.blstats
+            agent.log(f'STAIRS_FIRST {kind} at {(y, x)}, {d} steps, depth {bl.depth}, hp {bl.hitpoints}/'
+                      f'{bl.max_hitpoints}, hostiles {[(m[3].mname, int(m[0])) for m in agent.get_visible_monsters()[:4]]}')
+        self._go_down(target, max_steps=1 if escape else None, escape=escape)
 
     MAGIC_MAPPING_MIN_DEPTH = 3
 

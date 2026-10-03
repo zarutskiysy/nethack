@@ -2734,6 +2734,19 @@ CORPSE_WIDEN = False
 # FOOD_LOG: log lines for the food economy (no behaviour change): 'FOOD eat corpse/inv', 'FOOD refuse <corpse>
 # reason=...', 'FOOD pet eats', 'FOOD shop seen' -- the dev logs keep no messages, so meals and refusals were invisible
 FOOD_LOG = False
+# STAIRS_FIRST (dive_logic._stairs_first_target; research/stairs_first.md): a pick-axe diver that is not a dwarf walks
+# to a '>' (or a known trap door / hole) up to STAIRS_FIRST_MAX_STEPS steps away instead of digging, as long as the
+# dig hasn't started on this level, and also with hostiles in view, if the walk is safe: no mobile hostile next to
+# us and none that can reach a square of the path before we pass it (an Elbereth-ignorer with one turn to spare).
+# A non-dwarf needs ~26 turns per dug level, ~20 of them in its pit seeing only the adjacent squares; the '>' takes
+# d+1. Today the '>' is taken only within DIG_STAIRS_RADIUS (8) with nothing in view: with any hostile in view the
+# dive digs (dig_first) and took a '>' on <1% of such visits (7-16% of quiet ones), though those visits die 2-12x
+# as often. Dungeons of Doom from STAIRS_FIRST_MIN_DEPTH, never onto Medusa's level (below MEDUSA_MIN_DEPTH while
+# it is unknown), never on/below her level, the castle, the Valley or above the raven island.
+STAIRS_FIRST = False
+STAIRS_FIRST_MAX_STEPS = 12
+STAIRS_FIRST_MIN_DEPTH = 5           # above: the Mines branch '>' (Dlvl 2-4) may look like the main one
+STAIRS_FIRST_TRAPS = True            # known trap doors / holes too (fall 1+ levels: trap.c fall_through)
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
