@@ -431,6 +431,9 @@ WAND_RESERVE_HP = 0.5
 # levels) and the pick-axe digs meanwhile (the pit, then 'too hard to dig', tells the castle too). 4, not 3: the first
 # sound often comes at exactly +3 (castle-first-pass).
 WAND_CASTLE_WAIT = 4
+# MAZE_HASTE: the castle is the Dungeons' last level and the Dungeons hold 25-29 levels (dungeon.def), so a level below
+# Medusa's above this depth is a filler maze
+MAZE_CASTLE_MIN_DEPTH = 25
 # Resting to 95% on a deep level lets its monsters come to us (an s7 dig-dive rested for 150 turns on
 # Dlvl 15 until a leocrotta took it to 2 HP): with a digging tool, rest only below this.
 # arc-early-dig (daglar c131c7c EARLY_DIG_XL 3; Komershan/DT6A 5): an Archeologist starts with a pick-axe
@@ -1859,14 +1862,19 @@ class DiveLogic:
             self._escape_act(lift)
             return
 
+        # MAZE_SCARE_FIRST: a known scroll of scare monster goes under the dig square of a filler maze at once
+        if self._maze_scare_first():
+            return
+
         # astra guard.py: don't walk on below 2/3 HP; rest while nothing hostile is in view
-        # (not a Gehennom digger: see GEHENNOM_DIG_REST_BELOW)
+        # (not a Gehennom digger: see GEHENNOM_DIG_REST_BELOW; not in a filler maze: MAZE_HASTE)
         bl = agent.blstats
         digger = DIVE_REST and self._digger_here()
         rest_below = DIG_REST_BELOW if digger else REST_BELOW
         if bl.hitpoints < rest_below * bl.max_hitpoints and not agent.get_visible_monsters() and \
                 bl.hunger_state < Hunger.WEAK and not (digger and self._in_own_pit()) and \
-                not self._gehennom_digger() and not self._mino_alert() and not self.landing_pending():
+                not self._gehennom_digger() and not self._mino_alert() and not self.landing_pending() and \
+                not self._maze_haste():
             self._task('rest')
             if digger and self._rest_elbereth():
                 return
@@ -3565,8 +3573,8 @@ class DiveLogic:
         turn and let the fight logic deal with them (b4 stair-danced into a gargoyle: retreat up,
         the gargoyle followed, 'nothing to rest from' was false, so it went straight back down)."""
         agent = self.agent
-        if self.xorn_buffer() or self._mino_alert():
-            return False
+        if self.xorn_buffer() or self._mino_alert() or self._maze_haste():
+            return False   # (MAZE_HASTE: a filler maze's way down is taken at once)
         digger = DIVE_REST and self.diving and self.digging_tool() is not None
         # a digger takes stairs like a hole: a deep rest to 95% at XL 8 (1 HP per 5 turns) lets the level's
         # monsters come (base-jf25 s13 rested 180 turns at a Dlvl 14 '>' and died there)
@@ -4721,12 +4729,84 @@ class DiveLogic:
         castle = self.castle.castle_key
         if castle is not None and castle[0] == key[0] and key[1] < castle[1]:
             return True   # above the known castle
+        if jf_config.MAZE_HASTE and agent.blstats.depth < MAZE_CASTLE_MIN_DEPTH:
+            return True   # (MAZE_HASTE) no castle above depth 25: the Dungeons hold 25-29 levels (dungeon.def)
         vkey, vpos = self._visit_pos
         if vkey != key or vpos is None:
             return False
         if vpos[1] >= 10:
             return True   # we arrived outside the castle's fall region (bot x 0-9)
         return agent.blstats.time - self._visit_start[1] >= WAND_CASTLE_WAIT
+
+    def _maze_haste_level(self):
+        """MAZE_HASTE: a Dungeons level below Medusa's not shown to be the castle (no failed dig, not the known castle,
+        no castle door sound) -- a filler maze, or the castle before its first dig test (resting there buys nothing
+        either: its depth is banked on arrival)."""
+        if not (jf_config.MAZE_HASTE and self.diving and self.below_medusa()):
+            return False
+        key = self.agent.current_level().key()
+        return key not in self.undiggable and self.castle.castle_key != key and key not in self._door_heard
+
+    def _maze_haste(self):
+        """MAZE_HASTE: on such a level with a way down from here (a pick-axe or mattock, or a known wand of digging),
+        no turn goes to resting or waiting out blindness/confusion/stun/hallucination -- the hole is dug now (the
+        maze's minotaurs ignore Elbereth and home in on us; HP comes back as fast while we dig)."""
+        if not self._maze_haste_level():
+            return False
+        return self.digging_tool() is not None or self._dig_wand() is not None
+
+    def _maze_haste_here(self):
+        """MAZE_HASTE, for the wait-out of blindness/confusion/stun/hallucination: the hole can be started right where
+        we stand (our own pit, a square we may dig, or a known wand of digging to zap) -- no blind or confused walk."""
+        if not self._maze_haste():
+            return False
+        bl = self.agent.blstats
+        if self._dig_wand() is not None and self._wand_escape(self._dig_wand()) is not None:
+            return True
+        if self.digging_tool() is None or bl.time < getattr(self, '_dig_blocked_until', -1):
+            return False
+        return self._in_own_pit() or ((bl.y, bl.x) not in self.agent.current_level().stair_destination and
+                                      self._diggable_spot(bl.y, bl.x))
+
+    def _maze_scare_first(self):
+        """MAZE_SCARE_FIRST: on a filler maze (MAZE_HASTE's level test) with a known scroll of scare monster, no known
+        wand of digging and a pick to dig with, drop the scroll on a square we can dig before the first apply; the
+        dig then goes on from it (try_dig_down digs where we stand; mino_guard digs on from our scroll; CASTLE_SCARE's
+        hold digs from it at depth 25+). True: dropped (the action of this step)."""
+        if not (jf_config.MAZE_SCARE_FIRST and self.diving and self.below_medusa()):
+            return False
+        agent = self.agent
+        level = agent.current_level()
+        key = level.key()
+        if key in self.undiggable or self.castle.castle_key == key or key in self._door_heard:
+            return False
+        if self._dig_wand() is not None or self.digging_tool() is None or self.levitating() or \
+                agent.character.prop.polymorph or self.on_scare_scroll():
+            return False
+        bl = agent.blstats
+        pos = (bl.y, bl.x)
+        done = self.__dict__.setdefault('_maze_scare_levels', set())
+        if key in done or (self._scare_spot is not None and self._scare_spot[0] == key):
+            return False   # one scroll per level: we walked off it (or it is gone) -- the usual dig from here on
+        if pos in level.stair_destination or level.objects[pos] in G.STAIR_UP or level.objects[pos] in G.STAIR_DOWN:
+            return False
+        if not (self._in_own_pit() or self._diggable_spot(bl.y, bl.x)):
+            return False
+        known, _ = power.scare_scrolls(agent)
+        if not known:
+            return False
+        scroll = known[0]
+        self._task('scare monster first: drop it on the dig square')
+        agent.log(f'MAZE_SCARE_FIRST dropping {scroll.text!r} at {pos} on {key}, hp {bl.hitpoints}/{bl.max_hitpoints}')
+        # (set before the drop, as gehennom_scare: the drop's atomic step may switch strategy before the next line)
+        self._scare_spot = (key, pos)
+        self._scare_drop_turn = bl.time
+        self._scare_dropped_keys = {agent.inventory._scroll_key(scroll)}
+        done.add(key)
+        agent.inventory.drop(scroll, 1)
+        # never picked up again (a second pickup turns scare monster to dust)
+        agent.inventory._note_dropped([scroll], [1], force=True)
+        return True
 
     def _cold_item(self):
         """A known wand of cold or frost horn with charges (top-level: it is used by its letter), or None."""
@@ -7547,7 +7627,8 @@ class DiveLogic:
         if tool is not None:
             rest_below = GEHENNOM_DIG_REST_BELOW if self.in_gehennom() else DIG_REST_BELOW
             if agent.blstats.hitpoints < rest_below * agent.blstats.max_hitpoints and \
-                    not (DIVE_REST and self._in_own_pit()) and not self.xorn_buffer() and not self._mino_alert():
+                    not (DIVE_REST and self._in_own_pit()) and not self.xorn_buffer() and not self._mino_alert() and \
+                    not self._maze_haste():
                 self._task('rest before digging')
                 if DIVE_REST and self._rest_elbereth():
                     return True
@@ -7629,6 +7710,8 @@ class DiveLogic:
             return False
         if jf_config.DEEP_ITEMS and self._deep_on_scare():
             return False   # on our scroll of scare monster: nothing melees us, and the pit doesn't remove it
+        if jf_config.MAZE_SCARE_FIRST and self.below_medusa() and self.on_scare_scroll():
+            return False   # (MAZE_SCARE_FIRST) the same on a filler maze: the turn goes to the dig
         blind = agent.character.prop.blind
         self._look_after_sight()   # MEDUSA_BLIND_DIG
         bl = agent.blstats
