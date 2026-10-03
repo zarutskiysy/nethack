@@ -62,6 +62,8 @@ _TONAL_NAMES = ('wooden flute', 'magic flute', 'tooled horn', 'frost horn', 'fir
 TONAL = frozenset(O.from_name(n) for n in _TONAL_NAMES)
 QUIET = frozenset(O.from_name(n) for n in ('wooden flute', 'magic flute', 'wooden harp', 'magic harp', 'bugle'))
 PLENTY = O.from_name('horn of plenty')
+M1_WALLWALK = 0x8
+_GHOST_MLET = next(nh.permonst(i).mlet for i in range(nh.NUMMONS) if nh.permonst(i).mname == 'ghost')
 
 _RE_BOTH = re.compile(r'You hear (\d+) tumblers? click and (\d+) gears? turn')
 _RE_TUMB = re.compile(r'You hear (\d+) tumblers? click\.')
@@ -220,6 +222,16 @@ def wet(p):
     return any(map_char(p[0] + dx, p[1] + dy) == '}' for dx in (-1, 0, 1) for dy in (-1, 0, 1))
 
 
+def crush_immune(glyph):
+    """dbridge.c automiss(): a monster that passes walls or is noncorporeal (xorns, earth elementals, ghosts, shades)
+    is never touched by the raised bridge ('The portcullis passes through the xorn!')."""
+    glyph = int(glyph)
+    if not nh.glyph_is_monster(glyph):
+        return False
+    p = nh.permonst(nh.glyph_to_mon(glyph))
+    return bool(p.mflags1 & M1_WALLWALK) or p.mlet == _GHOST_MLET
+
+
 def instrument_rank(item):
     """0: a flute, harp or bugle (known or not); 1: a horn known to be tonal; 2: an unknown horn (a horn of plenty
     2 times in 11); None: no use for the tune (drums, horn of plenty, anything else)."""
@@ -268,6 +280,12 @@ class PassTune:
         self.camp_stays = 0
         self.camp_done_turn = None
         self._sea_turn = None        # last turn a sea monster showed
+        # PT_V2
+        self.start_turn = None       # turn of M:start (the walk's turn budget)
+        self.quiet_end = False       # the crusher ended because nothing came over the lowered bridge
+        self._xp = None              # experience points / the turn they last rose (the farm's stall check)
+        self._xp_turn = None
+        self._yielding = False       # a land hostile next to us on the walk: the survival layers have the step
 
     # ---------------------------------------------------------------- helpers
 
@@ -392,7 +410,8 @@ class PassTune:
 
     def _victims(self):
         """(hostiles, blockers) on the span or in the portcullis: blockers are our pets and peacefuls (no crushing
-        them: -15 alignment / murder), seen by glyph and the tracker's peaceful mask."""
+        them: -15 alignment / murder), seen by glyph and the tracker's peaceful mask. PT_V2: what the bridge can't
+        touch (crush_immune: xorns, earth elementals, ghosts) is neither."""
         hostiles, blockers = [], []
         tracker = self.agent.monster_tracker
         for p in (SPAN, PORTCULLIS):
@@ -402,6 +421,12 @@ class PassTune:
                                       (nh.glyph_is_monster(g) or tracker.monster_mask[y, x])):
                 blockers.append(p)
             elif nh.glyph_is_monster(g) or g == nh.GLYPH_INVISIBLE or tracker.monster_mask[y, x]:
+                if jf_config.PT_V2 and crush_immune(g):
+                    if self.tries['immune_seen'] == 0:
+                        self._log(f'crusher: no raise on {nh.permonst(nh.glyph_to_mon(g)).mname} at {p} '
+                                  f'(dbridge.c automiss)')
+                    self.tries['immune_seen'] += 1
+                    continue
                 hostiles.append(p)
         return hostiles, blockers
 
@@ -433,6 +458,29 @@ class PassTune:
                 return False
             self._log(f'resuming at hp {self._hp_frac():.2f}')
             self.paused = 0
+        if self._yield_to_survival(pos):
+            return False
+        return True
+
+    def _yield_to_survival(self, pos):
+        """PT_V2: on the walk to the tune square (not beside the bridge, not resting at the camp, not on our base) a
+        hostile next to us on land hands the step to the survival layers (fight2, Elbereth rest, prayer, the scare
+        hold) -- the lane's walk would dig on under its blows (castle._approach) or step on along the moat."""
+        if not jf_config.PT_V2 or self.camping or bridge_adjacent(pos) or \
+                (jf_config.CASTLE_BASECAMP and self._on_base()):
+            self._yielding = False
+            return False
+        land = [m for m in self._land_adjacent() if not self._peaceful(m[0])]
+        if not land:
+            if self._yielding:
+                self._log(f'walk resumes at {pos} (hp {self._hp_frac():.2f})')
+            self._yielding = False
+            return False
+        self.tries['yield'] += 1
+        if not self._yielding:
+            self._log(f'yielding at {pos} to the survival layers: {[getattr(m[1], "mname", "?") for m in land]} '
+                      f'next to us (hp {self._hp_frac():.2f})')
+        self._yielding = True
         return True
 
     def strategy(self):
@@ -479,8 +527,32 @@ class PassTune:
         msg = self.agent.message or ''
         if 'swings itself around you' in msg or 'cannot escape from' in msg:
             self._held_turn = self.agent.blstats.time
+        elif jf_config.PT_V2 and 'You get released' in msg:
+            self._held_turn = None
         t = getattr(self, '_held_turn', None)
         return t is not None and self.agent.blstats.time - t <= 3
+
+    def _held_escape(self):
+        """PT_V2, held by a sea monster: Elbereth (castle_front._held_escape / CFP_EEL). A scared holder lets go
+        (monmove.c distfleeck -> monflee -> release_hero) and doesn't attack; its next touch from the water drowns us
+        (mhitu.c AD_WRAP), and a blow from the Elbereth square erases it (mon.c setmangry). True: acted."""
+        agent = self.agent
+        if agent.character.prop.blind or not agent.can_engrave():
+            return False
+        if self.tries['held'] >= jf_config.PT_HELD_TRIES:
+            return False
+        self.tries['held'] += 1
+        if self._engraved() or (jf_config.CASTLE_BASECAMP and self._on_base()):
+            self._set_state('held on Elbereth: waiting for the holder to let go')
+            agent.search()
+            return True
+        self._set_state('held by a sea monster: Elbereth')
+        if jf_config.CASTLE_BASECAMP:
+            self._write_elbereth()
+        else:
+            agent.engrave('Elbereth')
+        self._log(f'held at {self._pos()}: Elbereth -> {(agent.message or "")[:80]!r}')
+        return True
 
     def _danger(self):
         """Why the lane must end now, or None."""
@@ -509,9 +581,24 @@ class PassTune:
             return self._abort('no instrument')
         if 'start' not in self.logged:
             self._mile('start', f'instrument {inst.text if inst else None!r} bridge {self.bridge()}')
+            self.start_turn = int(agent.blstats.time)
         camp = jf_config.CASTLE_BASECAMP
         if camp:
             self._note_sea()
+        v2 = jf_config.PT_V2
+        if v2:
+            if self._engraved():
+                # the Elbereth budgets count failed writes: an intact one under us starts them afresh
+                self.tries['elbereth'] = 0
+                self.tries['camp_elbereth'] = 0
+            if self._held():
+                if self._held_escape():
+                    return True
+            else:
+                self.tries['held'] = 0   # (a new grab gets the whole budget)
+            if 'spot' not in self.logged and self.start_turn is not None and not self.camping and \
+                    agent.blstats.time - self.start_turn > jf_config.PT_GO_TURNS:
+                return self._abort(f'tune square not reached in {jf_config.PT_GO_TURNS} turns')
         why = self._danger()
         if why:
             return self._abort(why)
@@ -760,6 +847,9 @@ class PassTune:
         if self.crush_start is None:
             self.crush_start = now
             self._mile('crusher', f'bridge {b}')
+        xp = int(getattr(agent.blstats, 'experience_points', 0))
+        if self._xp is None or xp > self._xp:
+            self._xp, self._xp_turn = xp, now
         farm = jf_config.CASTLE_FARM_THEN_ENTER
         if farm:
             over = not jf_config.PT_CRUSH or self._farm_over(now)
@@ -796,6 +886,7 @@ class PassTune:
                 self.down_since = now
             if now - self.down_since > (jf_config.PT_FARM_IDLE if farm else jf_config.PT_CRUSH_WAIT):
                 self.crusher_over = True
+                self.quiet_end = True
                 self._log(f'crusher over: nothing came for {now - self.down_since} turns ({self.cycles} raises)')
                 if farm:
                     return True   # (the next step rests first if hurt, then hands over)
@@ -836,8 +927,12 @@ class PassTune:
             return True
         bl = self.agent.blstats
         xl = int(getattr(bl, 'experience_level', 0))
-        if xl >= jf_config.PT_FARM_XL and int(bl.max_hitpoints) >= jf_config.PT_FARM_HP:
+        v2 = jf_config.PT_V2
+        if xl >= jf_config.PT_FARM_XL and (v2 or int(bl.max_hitpoints) >= jf_config.PT_FARM_HP):
+            # (PT_V2: max HP is the role's -- a Wizard has 62 at XL 11 -- so XL alone says strong)
             why = f'strong: XL {xl}, max HP {int(bl.max_hitpoints)}'
+        elif v2 and self._xp_turn is not None and now - self._xp_turn > jf_config.PT_FARM_STALL:
+            why = f'stalled: no experience for {now - self._xp_turn} turns'
         elif now - self.crush_start > jf_config.PT_FARM_TURNS:
             why = f'turn budget ({now - self.crush_start} turns)'
         elif self.cycles >= jf_config.PT_FARM_RAISES:

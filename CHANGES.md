@@ -91,3 +91,10 @@
   thrown weapons/food, known scare scrolls never dropped, dropped ones never re-picked (blessed ones may come back
   once: pickup.c), known-cursed floor ones left alone, and the dive takes such an item under it or within PT_KIT_DIST.
   Tests (fakes): `python tests/test_castle_basecamp.py`, `python tests/test_castle_kit.py`.
+- **castle-lane v2 (PT_V2, acts only with CASTLE_PASSTUNE on; workspace `research/castle_debug.md`):** fixes from the
+  tc1 forensics of 17 lane games. Held by a sea monster -> Elbereth (a scared holder lets go) instead of ending the
+  lane; the Elbereth budgets count failed writes only; the crusher never raises on what the bridge can't touch
+  (passes_walls / noncorporeal: xorns, earth elementals, ghosts); the farm ends at XL >= PT_FARM_XL whatever the max
+  HP, or after PT_FARM_STALL turns without experience; on the walk to the tune square a land hostile next to us hands
+  the step to the survival layers (no digging under its blows); the walk gives up after PT_GO_TURNS; a hand-over
+  after a quiet crusher skips FRONT_V3's maze-mouth hold. Tests (fakes): `python tests/test_castle_lane_v2.py`.

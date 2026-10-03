@@ -1404,6 +1404,28 @@ PT_FARM_REST_TURNS = 1500  # rest steps behind the raised bridge at most while f
 PT_FARM_EELS = True        # strike a sea monster next to us from the scare-monster base (never from Elbereth)
 PT_FARM_EEL_HP = 0.6       # ...only at this share of HP or more
 PT_FARM_FIGHTS = 600       # fights at most while farming (PT_MAX_FIGHTS otherwise)
+# PT_V2 (acts only with CASTLE_PASSTUNE on; research/castle_debug.md, the tc1 forensics of 17 lane games):
+#  - held by a sea monster: Elbereth (monmove.c distfleeck -> monflee -> release_hero: a scared holder lets go and
+#    doesn't attack) instead of ending the lane -- tc1 arc-hum 203 was grabbed on its first step onto (04,09), the
+#    lane quit, the old fight wielded a bullwhip and drowned the next turn;
+#  - the Elbereth budgets count failed writes only: an intact Elbereth under us resets them (tc1 wiz-elf 645 spent
+#    its 12 lifetime writes in ~1000 farm turns; the dust smudged, a jaguar came, the lane meleed it and died);
+#  - the crusher never raises on what dbridge.c automiss() spares (passes_walls / noncorporeal: xorns, earth
+#    elementals, ghosts): wiz-elf 645 made 175 raises in 950 turns on a xorn and earth elementals, so PT_FARM_IDLE
+#    never came;
+#  - the farm ends at XL >= PT_FARM_XL whatever the max HP (PT_FARM_HP 100 is out of a Wizard's reach: XL 11 /
+#    62 HP), or after PT_FARM_STALL crusher turns without experience;
+#  - during the walk to the tune square a land hostile next to us hands the step to the survival layers (fight2,
+#    Elbereth rest, prayer) instead of digging on under its blows (castle._approach: kni-hum 600's horse, val-dwa
+#    212's xorn, wiz-elf 652's guardian naga) or walking on hurt beside the moat (arc-gno 206's shark);
+#  - the walk to the tune square gives up after PT_GO_TURNS turns (pri-elf 624 looped 4,500 turns on a web);
+#  - a hand-over after a quiet crusher (nothing came over the lowered bridge for PT_CRUSH_WAIT / PT_FARM_IDLE turns)
+#    skips FRONT_V3's maze-mouth hold and its lures back to it: the crusher already did the hold's job, and the mouth
+#    (-2,10) is in the west maze, the minotaur's ground (tc0 mon-hum 644 died there after the only hand-over).
+PT_V2 = True
+PT_GO_TURNS = 2000         # turns from the lane's start to reach a tune square at most (PT_V2)
+PT_FARM_STALL = 400        # crusher turns without an experience gain that end the farm (PT_V2)
+PT_HELD_TRIES = 8          # Elbereth writes / waits while held by a sea monster (PT_V2)
 # CASTLE_KIT_PICKUP (off pending a dev A/B; research/strong_castle.md block 3 / phase 2): the whole game keeps one tonal
 # instrument (flute, harp, bugle, tooled/frost/fire horn; an unknown horn) and every known scroll of scare monster
 # ahead of the thrown weapons and food in ItemPriority (weight-limited like the rest), known scare scrolls are never

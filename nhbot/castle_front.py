@@ -172,6 +172,10 @@ class FrontDoor:
         tune = getattr(self.dive, 'tune', None)
         return tune is not None and tune.handed_off
 
+    def _tune_quiet(self):
+        """PT_V2: a passtune hand-over after a crusher that ended because nothing came over the lowered bridge."""
+        return self._tune_open() and jf_config.PT_V2 and bool(getattr(self.dive.tune, 'quiet_end', False))
+
     def _v3(self):
         """The front-strong lane's behaviour: FRONT_V3, or a passtune hand-over (its walk, hold and tower code)."""
         return jf_config.FRONT_V3 or self._tune_open()
@@ -912,6 +916,14 @@ class FrontDoor:
         Elbereth) is fought while HP >= HOLD_REST, below that we rest on Elbereth (written again whenever a blow of
         ours has scuffed it and nothing is next to us)."""
         agent = self.agent
+        if self.hold_i == 0 and self._tune_quiet() and self.tries['tune_quiet_skip'] == 0:
+            # PT_V2: the passtune crusher held the bridge until nothing came over it -- the hold's job; the mouth is
+            # the west maze's (its minotaur's) ground. In at once, and no lure back to it (a retreat still goes there)
+            self.tries['tune_quiet_skip'] += 1
+            self.hold_over = True
+            self.lures = MAX_LURES
+            self._mile('inside', 'passtune crusher quiet: no maze-mouth hold')
+            return self._advance(HALL_HOLD, 1)
         hold = self._hold_square()
         pos = self._pos()
         hp = self._hp_frac()

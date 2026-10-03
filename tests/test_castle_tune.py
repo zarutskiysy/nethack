@@ -572,7 +572,8 @@ def test_abort_eel_without_elbereth():
 
 
 def test_abort_held():
-    with flags(CASTLE_PASSTUNE=True):
+    # (the pre-PT_V2 lane; PT_V2's Elbereth escape: tests/test_castle_lane_v2.py)
+    with flags(CASTLE_PASSTUNE=True, PT_V2=False):
         agent, dive, tune = setup()
         agent.inventory.engraving_below_me = 'Elbereth'
         agent.message = 'The giant eel swings itself around you!'
