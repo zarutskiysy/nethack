@@ -1737,6 +1737,34 @@ AT_THREAT_STILL = 4                 # turns an @ in view may stay no closer befo
 AT_THREAT_MAX_HOLD = 40             # holding turns per level, at most
 AT_THREAT_WAND_XL = 10              # the kept wand of digging is spent on an @ below this XL (or at half HP)
 
+# MAZE_HASTE (research/post_medusa.md; dive_logic._maze_haste, global_logic.wait_out_unexpected_state_strategy): on a
+# Dungeons level below Medusa's that isn't (yet) shown to be the castle -- a filler maze -- with a way to dig down, the
+# dive spends no turn on anything but the hole. mkmaze.c fill_empty_maze puts rn2(3) awake minotaurs and 7-11 other
+# monsters in each filler maze, and they all home in on us (monmove.c set_apparxy knows where we are; m_move follows our
+# track). Current-code dev games (b10*/au_*/g0*/g1*/mv10/tc*/wb1/wr1, 886 Medusa passes): 117 died on a filler (8.2% of
+# 1426 filler visits, 76 to minotaurs), ~0.06 each below reaching the castle; a pick digger who isn't a dwarf spends a
+# median 28 turns per filler and dies on 10.4% of them (dwarves 7 turns, 3.6%; a wand of digging 1 turn, 4.5%), and the
+# first minotaur sighting comes at 0.5%/turn in turns 1-10 and 0.2-0.3%/turn up to turn 30. Yet:
+#  * the dive RESTED before digging (REST_BELOW / DIG_REST_BELOW: 62 visits, median 35 turns idle; an XL-7 hero heals
+#    ~1 HP per 5 turns, and it heals just as fast while digging -- allmain.c regenerates every turn we don't move);
+#  * wait_out_unexpected_state stood ('.') through a raven's or cobra's blindness, confusion, stun or hallucination:
+#    b10 ran-orc-cha-mal__48 landed blind on Dlvl 24, watched two minotaurs come by telepathy from 17 squares for 30
+#    turns ('Blind' on the status line) and died; ran-hum-cha-fem__54 the same from 7. A pick digs blind, confused
+#    ('>' is never confdir'd: cmd.c getdir), stunned or hallucinating alike.
+#  * the WAND_RESERVE maze zap waited WAND_CASTLE_WAIT turns after any landing at bot x <= 9, even at depth < 25 where no
+#    castle can be (dungeon.def: the Dungeons hold 25-29 levels and the castle is the last).
+# With the flag: no rest and no wait-out there while a dig (or a dig wand's zap) is possible, and a level below Medusa
+# at depth < 25 counts as a filler at once. Inert above Medusa, on her level, on the castle and in Gehennom.
+MAZE_HASTE = False
+# MAZE_SCARE_FIRST (dive_logic._maze_scare_first): on such a filler, with a KNOWN scroll of scare monster and no known
+# wand of digging, drop it on the landing square before the first apply and dig the hole from it. A minotaur respects a
+# scroll of scare monster (monmove.c onscary: only Elbereth leaves minotaurs and @ out), so do the soldiers and elves
+# that killed another 14 filler visitors; a scared monster neither melees (dochug !scared) nor stops the dig occupation
+# (hack.c monster_nearby). mino_guard drops a known one only once a minotaur is within 5 -- in the dark maze most were
+# first seen already adjacent, in our own pit (deep_deaths §3.2), and the drop then costs a ~40-HP round. The scroll is
+# lost with the hole 2 times in 3 (dokick.c impact_drop), one scroll per level. Known in 3.7% of pick visits.
+MAZE_SCARE_FIRST = False
+
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():

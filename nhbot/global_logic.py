@@ -472,11 +472,15 @@ class GlobalLogic:
         # wand of polymorph again instead of waiting it out (amd cfph-s6's black light stood 43 turns in the west maze)
         form_blind = lambda: jf_config.LIFT_POLY_PICKY and castle_poly() and castle_cross.eyeless_form(self.agent) and \
             castle_power._poly_wand(self.agent) is not None
+        # MAZE_HASTE: in a filler maze below Medusa a pick digs blind, confused, stunned or hallucinating alike (the '>'
+        # of an apply is never confdir'd) -- waiting it out there gives the maze's minotaurs the turns (b10
+        # ran-orc-cha-mal__48 stood blind 30 turns on Dlvl 24 while two came by telepathy from 17 squares)
+        maze_go = lambda: jf_config.MAZE_HASTE and self.dive._maze_haste_here()
         while (
-                (self.agent.character.prop.blind and not castle_go() and not form_blind()) or
-                self.agent.character.prop.confusion or
-                self.agent.character.prop.stun or
-                (self.agent.character.prop.hallu and not castle_go()) or
+                (self.agent.character.prop.blind and not castle_go() and not form_blind() and not maze_go()) or
+                (self.agent.character.prop.confusion and not maze_go()) or
+                (self.agent.character.prop.stun and not maze_go()) or
+                (self.agent.character.prop.hallu and not castle_go() and not maze_go()) or
                 (self.agent.character.prop.polymorph and not castle_poly() and not xorn_dive())):
             if not yielded:
                 yield True
