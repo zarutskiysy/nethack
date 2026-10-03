@@ -1771,6 +1771,27 @@ FB_RESERVE_DIFF = 2
 # dilated shop mask already keeps the bolt off the stock. du1 wiz-gno-neu-mal__626 meleed a giant bat to death in a shop
 # doorway, the bat in the corridor outside, Pw 71/71.
 FB_SHOP_KNOWN = False
+# FB_DARK_TAIL (off; A/B, research/wiz_e29.md): no bolt along a line that may hold a monster we cannot see -- from the
+# second square on (adjacent ones are always in view) up to FB_TAIL_REACH or the first seen wall, every square must be
+# visible floor (lit, in view), a displayed monster, or an object lying in a lit room in view. zap.c bhit goes on past
+# the target (range -= 3) and hits whatever stands behind it: an unseen peaceful killed by the bolt costs -5 alignment
+# plus its malign (-9 for a co-aligned one) and Luck -1 half the time (mon.c xkilled), one only hit costs -1 (setmangry),
+# and from an Elbereth square any monster the engraving scares makes us a hypocrite (-1..-5, Elbereth deleted). Wizards
+# start at record 0 and a NEUTRAL gains nothing from the always-hostile alignment-0 monsters of Dlvl 1 (newts, jackals,
+# rats, lichens, molds: makemon.c set_malign gives them malign 0 when co-aligned, +5 to lawfuls and chaotics), while
+# bats, gnomes, kittens, little dogs, ponies and acid blobs are generated peaceful ~47% of the time (peace_minded). So one
+# stray kill puts a neutral Wizard's record below 0 and every prayer fails until it recovers. Dev au_wizhn (90 paired
+# seeds): nhbot wiz-hum-neu loses 24 games before XL 5 (16 starved/fainted, 4 first prayers 'displeased') against 9 for
+# e29/pf_s25p8, which never casts; that is the whole 0.038 gap (both score 0.28 per game once at XL 5). Human neutrals
+# lack infravision, so they see the fewest monsters in the dark: 'You kill it' shows in 14 of their 189 final message
+# windows (wb1/wr1/wz0/b3/fx1/wA/wC) against 6-10 for the other Wizards. The guard is on while the prayer model's
+# record estimate (blind to unseen kills) is below FB_DARK_TAIL_RECORD (0: always). 15 outlasts one peaceful kill
+# (-14); gains are capped at ALIGNLIM = 10 + turn / 200 (attrib.c), so every Wizard is guarded until ~T1000, lawfuls
+# and chaotics (+5 a newt) soon after, neutrals until they have killed enough cross-aligned monsters (kobolds, orcs).
+FB_DARK_TAIL = False
+FB_DARK_TAIL_RECORD = 15
+# FB_MIN_XL (0: off; A/B): no force bolt below this XL -- the e29 early game (its engine never casts in fights).
+FB_MIN_XL = 0
 # FB_OVER_RAYS: in the grind (not diving), fight2 makes no ray-wand plan (cold, fire, lightning, magic missile, death)
 # while force bolt can be cast: the bolt hits one monster for 2d12 and never comes back, the ray's bounce model knows only
 # the squares we have seen (get_next_states treats unseen ones as walls; diagonal bounces are a TODO). Three Wizard grind

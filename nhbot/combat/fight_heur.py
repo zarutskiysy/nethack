@@ -596,9 +596,60 @@ def _fb_castable(agent):
                     agent.blstats.energy >= 5 and agent.blstats.hunger_state < Hunger.WEAK and
                     not character.prop.polymorph and agent.blstats.carrying_capacity < 2 and
                     character.spell_fail_chance.get('force bolt', 1) <= 0.3 and
+                    not _fb_below_min_xl(agent) and
                     not (jf_config.FB_SANITY and _fb_cannot_cast(agent)))
     except Exception:
         return False
+
+
+def _fb_below_min_xl(agent):
+    """FB_MIN_XL: no bolt below that XL (0: off)."""
+    return bool(jf_config.FB_MIN_XL) and agent.blstats.experience_level < int(jf_config.FB_MIN_XL)
+
+
+def _fb_dark_tail_active(agent):
+    """FB_DARK_TAIL: the guard holds while the prayer model's alignment-record estimate is below FB_DARK_TAIL_RECORD
+    (0: whatever the record), or when there is no estimate."""
+    if not jf_config.FB_DARK_TAIL:
+        return False
+    limit = int(jf_config.FB_DARK_TAIL_RECORD or 0)
+    if limit <= 0:
+        return True
+    try:
+        record = agent.prayer_model.record
+    except Exception:
+        return True
+    return record is None or record < limit
+
+
+def _fb_square_in_view(agent, y, x):
+    """FB_DARK_TAIL: nothing unseen can stand on (y, x) -- visible floor (lit room floor in view, a lit corridor), a
+    monster on display (peacefuls and pets are refused elsewhere), or an object whose square borders lit floor in view
+    (a remembered object in the dark looks the same, but its neighbours read as dark floor)."""
+    g = agent.glyphs[y, x]
+    if g in G.VISIBLE_FLOOR or g in G.MONS or g in G.PETS:
+        return True
+    if g in G.OBJECTS or g in G.BODIES:
+        h, w = agent.glyphs.shape
+        for ny, nx in ((y - 1, x), (y + 1, x), (y, x - 1), (y, x + 1)):
+            if 0 <= ny < h and 0 <= nx < w and agent.glyphs[ny, nx] in G.VISIBLE_FLOOR:
+                return True
+    return False
+
+
+def _fb_line_may_hide(agent, level, y0, x0, sy, sx, reach):
+    """FB_DARK_TAIL: could the bolt's line (path and tail, up to `reach` squares or the first seen wall) hold a monster
+    we cannot see? The square next to us is always in view."""
+    h, w = level.walkable.shape
+    for k in range(1, reach + 1):
+        y, x = y0 + sy * k, x0 + sx * k
+        if not (0 <= y < h and 0 <= x < w):
+            return False
+        if level.seen[y, x] and not level.walkable[y, x]:
+            return False
+        if k > 1 and not _fb_square_in_view(agent, y, x):
+            return True
+    return False
 
 
 def _fb_cannot_cast(agent):
@@ -679,6 +730,8 @@ def force_bolt_actions(agent, monsters):
         return []
     if character.spell_fail_chance.get('force bolt', 1) > 0.3:
         return []
+    if _fb_below_min_xl(agent):
+        return []
     if jf_config.FB_SANITY and _fb_cannot_cast(agent):
         return []
     on_elbereth = agent.inventory.engraving_below_me.lower() == 'elbereth'
@@ -696,6 +749,7 @@ def force_bolt_actions(agent, monsters):
     shop = utils.dilate(level.shop_interior, radius=1) if level.shop_interior.any() else None
     reach = int(jf_config.FB_TAIL_REACH) if jf_config.FB_SANITY else FORCE_BOLT_MAX_RANGE
     reserve = _fb_reserve(agent) if jf_config.FB_RESERVE else 0
+    dark_tail = _fb_dark_tail_active(agent)
     best = None
     for monster in monsters:
         _, y, x, mon, _ = monster
@@ -713,6 +767,12 @@ def force_bolt_actions(agent, monsters):
                 clear = False
                 break
         if not clear or not _force_bolt_tail_safe(agent, level, shop, y0, x0, sy, sx, reach):
+            continue
+        # FB_DARK_TAIL: a low-record hero bolts only along lines it can see to the end (see jf_config)
+        if dark_tail and _fb_line_may_hide(agent, level, y0, x0, sy, sx, reach):
+            if getattr(agent, '_fb_dark_logged', None) != agent.blstats.time:
+                agent._fb_dark_logged = agent.blstats.time
+                agent.log(f'FB_DARK_TAIL no bolt at the {mon.mname} at {(int(y), int(x))}: the line may hide a monster')
             continue
         # FB_FOCUS: from an Elbereth square only at what it doesn't scare, with nothing it scares on the way
         if on_elbereth and (elbereth_attack_penalty(agent, monsters, monster) != 0 or
