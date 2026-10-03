@@ -2609,6 +2609,28 @@ WISH_PRAYER_HOLD = False   # vk_castle port: OFF here (vk s26 4921bc3 ships True
 # every turn and never moved: rt-ik-smoke jf73 s1 took the castle's wand of wishing through PASSTUNE_CRUSHER,
 # wished the TC ring and the scrolls, and sat there wearing two lift-test rings until a xorn killed it.
 ROUTE_RING_SWAP = False   # vk_castle port: OFF here (vk s26 4921bc3 ships True)
+# Healer kit lane (hea_kit.py, research/hea_kit.md; role-gated through roles.py OVERRIDES['hea']). The kit's wand of
+# sleep was never zapped in the grind and in the dive only after a potion at critical HP; 35 of 39 deep deaths with an
+# inventory dump still held it charged (median 6). HEA_SLEEP_ZAP: zap it when the awake hostiles' melee kills us within
+# HEA_SLEEP_TURNS turns with P >= HEA_SLEEP_PDIE (HEA_SLEEP_PDIE_LAST for the last HEA_SLEEP_RESERVE charges in the grind),
+# along the line that sleeps >= HEA_SLEEP_MIN_SHARE of that damage, never with P(our ray hits us) > HEA_SLEEP_SELF_P;
+# then melee the sleepers. KNOWN_ITEMS leaves the wand of sleep to it.
+HEA_SLEEP_ZAP = False
+HEA_SLEEP_TURNS = 3
+HEA_SLEEP_PDIE = 0.2
+HEA_SLEEP_PDIE_LAST = 0.5
+HEA_SLEEP_RESERVE = 1
+HEA_SLEEP_RANGE = 5          # the farthest target (a ray flies 7..13 squares)
+HEA_SLEEP_MIN_SHARE = 0.4
+HEA_SLEEP_SELF_P = 0.03
+# HEA_SLEEP_WERE: also sleep a were-creature in animal form within 2 while not yet a lycanthrope (85 of 180 Healer games
+# caught lycanthropy; each cure cost a prayer)
+HEA_SLEEP_WERE = False
+# HEA_QUAFF: no heal spell castable, HP < HEA_QUAFF_FRAC of max and P(death in 2 turns) >= HEA_QUAFF_PDIE -> a known
+# (full / extra) healing potion now (the emergency waits for HP < 1/3); a due safe prayer still goes first
+HEA_QUAFF = False
+HEA_QUAFF_FRAC = 0.5
+HEA_QUAFF_PDIE = 0.25
 
 _raw = os.environ.get('JF_CFG')
 if _raw:
