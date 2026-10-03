@@ -796,11 +796,14 @@ class GlobalLogic:
         for name, t in by_role.items():
             if role == getattr(Character, name.upper(), object()):
                 table = t
+        # PET_EXILE: the horse was left on Dlvl 1 (dive_logic.pet_exile_strategy), so the grind stays below it
+        exiled = bool(jf_config.PET_EXILE) and getattr(self.dive, 'pet_exiled', False)
         if not table:
-            return None
+            return jf_config.PET_EXILE_LEVEL if exiled else None
         xl = self.agent.blstats.experience_level
         keys = [k for k in table if k <= xl]
-        return table[max(keys)] if keys else 1
+        level = table[max(keys)] if keys else 1
+        return max(level, jf_config.PET_EXILE_LEVEL) if exiled else level
 
     def _tour_stalled(self):
         """The tour has kept within 8 squares of one spot on one level, same milestone, TOUR_STALL_TURNS turns."""
@@ -1014,6 +1017,8 @@ class GlobalLogic:
                 self.protect.map_strategy(),
                 self.dive.hunt_strategy(),
                 self.dive.ditch_pet_strategy(),
+                # PET_EXILE (Knights): leave an unfed horse behind on Dlvl 1, the grind moves to Dlvl 2
+                self.dive.pet_exile_strategy(),
                 # a tour-mode pick trip looks for the Mines branch itself (dive_logic.FAST_BRANCH)
                 self.dive.trip_branch_strategy(),
             ])

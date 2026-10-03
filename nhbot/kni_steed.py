@@ -61,6 +61,7 @@ THROW_COOLDOWN = 8
 MAX_STEP_AWAYS = 60     # per starvation episode (the confusion wears off at 1/50 per move)
 MAX_THROW_DIST = 3
 HOSTILE_RADIUS = 5
+EXILE_SEEN_WITHIN = 100   # PET_EXILE: the horse counts as with us when on screen this recently on this level
 
 _HORSE = r'(?:[Tt]he|[Yy]our) (?:saddled )?(pony|horse|warhorse)'
 _EAT_RE = re.compile(_HORSE + r' (eats|devours) (.+?)\.')
@@ -101,6 +102,7 @@ class SteedKeeper:
         self.step_aways = 0
         self._last_step = None
         self._pets = []                # [(y, x, name)] horse pets on screen this step
+        self._horse_seen = None        # (level key, turn) a horse pet was last on screen (PET_EXILE)
 
     def active(self):
         ch = self.agent.character
@@ -149,6 +151,28 @@ class SteedKeeper:
                 if name in HORSES:
                     pets.append((int(y), int(x), name))
         self._pets = pets
+        if pets:
+            self._horse_seen = (agent.current_level().key(), turn)
+
+    # ---- PET_EXILE (jf_config, dive_logic.pet_exile_strategy)
+
+    def exile_wanted(self):
+        """The horse is with us on this level (seen within EXILE_SEEN_WITHIN turns), is due to be fed (FEED_AFTER past
+        its estimated hungrytime, or starving) and no apple or carrot is left to feed it. False on any error."""
+        try:
+            agent = self.agent
+            if agent.character.role != Character.KNIGHT:
+                return False
+            turn = agent.blstats.time
+            seen = self._horse_seen
+            if seen is None or seen[0] != agent.current_level().key() or turn - seen[1] > EXILE_SEEN_WITHIN:
+                return False
+            if any(i.category == nh.FOOD_CLASS and len(i.objs) == 1 and i.objs[0].name in VEGGIES
+                   for i in agent.inventory.items):
+                return False
+            return self._starving(turn) or turn >= self.hungry_at + FEED_AFTER
+        except Exception:
+            return False
 
     # ---- decision
 
