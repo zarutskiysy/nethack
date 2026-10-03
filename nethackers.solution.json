@@ -16,7 +16,8 @@
     "github.com/DT6A/nethacker@ad7a864d9385f84c9b4f9865bb68141c90ca5e1b",
     "github.com/CleverShovel/nethacker@911c9493762a36cb20e806a132f351d290334644",
     "github.com/DT6A/nethacker@f284bd2ae1fe21a7cad766369f2865f20c31198c",
-    "github.com/daglar-dragomirov/nethacker@50fa3c45f84bd29fe9ccca0d356e1a3ad1020812"
+    "github.com/daglar-dragomirov/nethacker@50fa3c45f84bd29fe9ccca0d356e1a3ad1020812",
+    "github.com/vkurenkov/nethacker@4921bc3b774cf673b42d13a79156c86bca5cba09"
   ],
   "influences": [
     "github.com/CleverShovel/nethacker@0d1fb22498024cdcac06be9d15d0f70e8cae803c",

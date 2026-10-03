@@ -995,6 +995,10 @@ class DiveLogic:
         self.front = FrontDoor(self)       # castle_front.py (jf_config.FRONT_DOOR)
         from .castle_tune import PassTune
         self.tune = PassTune(self)         # castle_tune.py (jf_config.CASTLE_PASSTUNE)
+        from .castle_crusher import Crusher
+        self.crusher = Crusher(self)       # castle_crusher.py (jf_config.PASSTUNE_CRUSHER; vk_castle port)
+        from .castle_inner import CastleInner
+        self.inner = CastleInner(self)     # castle_inner.py (jf_config.CASTLE_INNER; vk_castle port)
         self._dwarf_seen = (None, [])      # (level key, [(y, x)]) of dwarf glyphs at the last update
         self._diggers = {}                 # level key -> {(y, x): turn} where a dwarf was seen digging
         self._crash_turn = {}              # level key -> last turn 'You hear crashing rock.'
@@ -1004,6 +1008,7 @@ class DiveLogic:
         self._visit_start = (None, 0)      # (level key, turn) we arrived on the current level
         self._visit_pos = (None, None)     # (level key, (y, x)) where we arrived on it (WAND_RESERVE: castle region)
         self._door_heard = {}              # level key -> last turn 'You hear a door open.' (the castle's soldiers)
+        self._landing_direct = {}          # LANDING_DIRECT: level key -> state at a castle-likely landing with the crusher armed
         self._reserve_zaps = 0             # WAND_RESERVE: zaps spent on Medusa's level and below
         self._blind_since = None           # MEDUSA_BLIND_HOLD: first turn of the current blind spell
         self._was_blind = False            # MEDUSA_BLIND_DIG: blind at the last update
@@ -1309,6 +1314,8 @@ class DiveLogic:
             self._door_seen = len(hist)
             if any('You hear a door open' in m for m in hist[start:] + [agent.message]):
                 self._door_heard[key] = turn
+        if jf_config.LANDING_DIRECT:
+            self._landing_direct_update(level, key, turn, pos)
         if MINETOWN_GUARD and level.dungeon_number == Level.GNOMISH_MINES and key not in self._town_levels and \
                 utils.isin(agent.glyphs, self._town_glyphs()).any() and \
                 (not CAMP_FIX or self._town_sighting(level, key, turn)):
@@ -1814,7 +1821,7 @@ class DiveLogic:
         rest_below = DIG_REST_BELOW if digger else REST_BELOW
         if bl.hitpoints < rest_below * bl.max_hitpoints and not agent.get_visible_monsters() and \
                 bl.hunger_state < Hunger.WEAK and not (digger and self._in_own_pit()) and \
-                not self._gehennom_digger() and not self._mino_alert():
+                not self._gehennom_digger() and not self._mino_alert() and not self.landing_pending():
             self._task('rest')
             if digger and self._rest_elbereth():
                 return
@@ -1831,6 +1838,12 @@ class DiveLogic:
             self._task('leave quest')
             return self.leave_quest()
 
+        # PASSTUNE_CRUSHER: a kit with a tonal instrument walks out of the west maze to the courtyard here, at the plan's
+        # level of the chain (fight2, the Elbereth rests and the retreats still come first); the crusher itself takes
+        # over once we stand in the courtyard
+        if self.crusher.approach_step():
+            self._task('crusher approach')
+            return
         # the castle level (the dig-dive's floor): try to get round the moat to the back door's trap door
         if self.castle.active():
             self._task('castle passage')
@@ -2080,6 +2093,102 @@ class DiveLogic:
 
     def on_medusa_level(self):
         return self.medusa_level is not None and self.agent.current_level().key() == self.medusa_level
+
+    def landing_pending(self):
+        """LANDING_FOCUS (jf_config): the crusher's walk to its square is still ahead -- a kit with a tonal instrument on
+        the castle's west side (castle known, the crusher armed and not done, the tune not learnt, the square not
+        reached, not afloat or polymorphed). While it is, the optional detours wait for the square: the HP rest (a hero
+        of XL 7 heals 1 HP in 5 turns: 20 turns of rest buy 4 HP while the minotaur and the lich, which know where we
+        are, close in)."""
+        if not (jf_config.LANDING_FOCUS and jf_config.PASSTUNE_CRUSHER):
+            return False
+        c = self.crusher
+        if c.done or c.destroyed or c.tune is not None or 'square' in c.logged or not c.on_castle():
+            return False
+        if self.castle._floating() or self.agent.character.prop.polymorph:
+            return False
+        return c._instrument() is not None
+
+    _DIRECT_SOUNDS = ('You hear a door open', 'You hear a door crash open', 'courtly conversation', 'sceptre pounded',
+                      'Off with her head', 'Off with his head', "Queen Beruthiel's cats", 'blades being honed',
+                      'loud snoring', 'dice being thrown', 'General MacArthur')
+
+    def _landing_direct_update(self, level, key, turn, pos):
+        """LANDING_DIRECT (jf_config): a kit with a tonal instrument (the crusher armed; LANDING_DIRECT_ANY: any kit) that lands where only the castle's
+        west maze lies -- the Dungeons of Doom, depth >= 25, below a known Medusa (or none known), bot x <= 9
+        (castle.des TELEPORT_REGION levregion(1,0,10,20): 101 of 101 real castle arrivals, 1 of 185 filler-maze
+        landings) -- knows the castle at the first turn instead of digging the recognition pit (median 6 turns and a
+        pit that holds us 2-5 more: the minotaur guard zapped a wand of digging into the undiggable floor in 52 of 448
+        harness landings, 149 fought out of the pit). The level counts as undiggable and the crusher's walk out of the maze
+        starts at once. Verified: no castle sound within LANDING_DIRECT_VERIFY turns -> not the castle after all, the
+        recognition is taken back and the dive digs as usual."""
+        agent = self.agent
+        st = self._landing_direct.get(key)
+        if st is None:
+            window = jf_config.LANDING_DIRECT_WINDOW
+            if self._visit_start[0] != key or turn - self._visit_start[1] > window:
+                self._landing_direct[key] = {'state': 'no'}
+                return
+            if self.castle.castle_key == key or level.dungeon_number != Level.DUNGEONS_OF_DOOM or \
+                    agent.blstats.depth < 25 or not (jf_config.PASSTUNE_CRUSHER or jf_config.LANDING_DIRECT_ANY):
+                self._landing_direct[key] = {'state': 'no'}
+                return
+            vkey, vpos = self._visit_pos
+            vp = vpos if vkey == key and vpos is not None else pos
+            medusa = self.medusa_level
+            if int(vp[1]) > 9 or (medusa is not None and (tuple(medusa) == tuple(key) or medusa[1] >= level.level_number)):
+                self._landing_direct[key] = {'state': 'no'}
+                return
+            if not list(agent.inventory.items):
+                return   # (not parsed yet: look again within the window)
+            crusher = self.crusher
+            if jf_config.LANDING_DIRECT_ANY:
+                # (every kit: the castle route is whatever the castle logic picks, the recognition is the same)
+                if self.castle._floating() or agent.character.prop.polymorph:
+                    self._landing_direct[key] = {'state': 'no'}
+                    return
+            else:
+                if crusher._instrument() is None and window > 1 and not crusher.done and not crusher.destroyed and \
+                        turn - self._visit_start[1] < window:
+                    return   # (LANDING_DIRECT_WINDOW: a wish or a find may bring the instrument in the first turns)
+                if crusher.done or crusher.destroyed or crusher.tune is not None or crusher._instrument() is None or \
+                        self.castle._floating() or agent.character.prop.polymorph:
+                    self._landing_direct[key] = {'state': 'no'}
+                    return
+            marked = key not in self.undiggable
+            self.undiggable.add(key)
+            self._landing_direct[key] = {'state': 'direct', 't0': turn, 'marked': marked,
+                                         'h0': max(0, len(agent._message_history) - 3)}
+            agent.log(f'LANDING direct: castle-likely landing at depth {agent.blstats.depth} (bot x {int(vp[1])}, Medusa '
+                      f'{medusa}), crusher armed: recognised at once')
+            # (the lines the recognition dig writes: the kit tools read the castle kit from them)
+            inv = '; '.join(f'{agent.inventory.items.get_letter(i)} - {i.text}' for i in agent.inventory.items.all_items)
+            agent.log(f'DIVE bottom reached at depth {agent.blstats.depth}; inventory: {inv}')
+            try:
+                plan = '; '.join(f'{a} {i.text} ({why})' for a, i, why in power.passage_plan(agent))
+                agent.log(f'POWER passage plan at depth {agent.blstats.depth} AC {agent.blstats.armor_class}: '
+                          f'{plan or "nothing"}')
+            except Exception as e:   # diagnostics only
+                agent.log(f'POWER passage plan failed: {e!r}')
+            self.castle.on_bottom(key)
+            return
+        if st.get('state') != 'direct':
+            return
+        heard = [m for m in agent._message_history[st['h0']:] + [agent.message or '']
+                 if any(s in m for s in self._DIRECT_SOUNDS)]
+        if heard:
+            st['state'] = 'verified'
+            agent.log(f'LANDING direct verified by ear at +{turn - st["t0"]}: {heard[0][:60]!r}')
+            return
+        if self.castle.committed() or self.castle._floating() or turn - st['t0'] < jf_config.LANDING_DIRECT_VERIFY:
+            return
+        st['state'] = 'retracted'
+        if st.get('marked'):
+            self.undiggable.discard(key)
+        if self.castle.castle_key == key:
+            self.castle.castle_key = None
+        agent.log(f'LANDING direct retracted: no castle sound in {turn - st["t0"]} turns at depth {agent.blstats.depth}: '
+                  f'not the castle, digging as usual')
 
     def _titan_named(self):
         """MEDUSA_TITAN_MSG: a message since the last call names a titan ('The titan casts a spell!', 'The invisible
@@ -4259,6 +4368,10 @@ class DiveLogic:
                     self.undiggable.add(key)
                     if level.dungeon_number == Level.DUNGEONS_OF_DOOM and agent.blstats.depth >= 25:
                         self.castle.on_bottom(key)
+                if jf_config.XORN_STAIRS_NOTE and 'beam bounces off the' in agent.message:
+                    # zap.c zap_dig: on stairs or a ladder the beam hits the ceiling: never zap down here again
+                    self._bad_dig_spots.add((key, spot))
+                self._zap_down_castle_check(key)
             return
         if what == 'step':
             agent.log(f'DIVE walking to dig at {arg}, hostiles at {[(m[3].mname, int(m[0])) for m in monsters[:3]]}')
@@ -4273,6 +4386,35 @@ class DiveLogic:
             return
         agent.log(f'DIVE digging out, hostiles at {[(m[3].mname, int(m[0])) for m in monsters[:3]]}')
         self.dig_with_tool(arg)
+
+    def _zap_down_castle_check(self, key):
+        """CASTLE_ZAP_RECOGNIZE: a wand of digging zapped down on the main line at depth >= 25 that makes a pit ('You dig a pit in
+        the floor.') or says 'The floor here is too hard to dig in.' (dig.c dighole: nohole where Can_dig_down is false -- the
+        castle is the only such level there) is the castle: recognise it, as the pick-axe path does. The escape zap and the plain
+        wand zap marked the level undiggable and went on without it (and the pit message was tested on the last message page
+        only, which a monster's attack replaces), so the castle passage -- the lift tests, the xorn walk, the whole route layer
+        -- never started: 4 of 10 wand-zap games of routes-polyx14-cl5 idled 2000-3000 turns at the landing, one of them as a
+        xorn for 680 turns."""
+        if not jf_config.CASTLE_ZAP_RECOGNIZE:
+            return
+        agent = self.agent
+        level = agent.current_level()
+        if level.key() != key or level.dungeon_number != Level.DUNGEONS_OF_DOOM or agent.blstats.depth < 25 or \
+                self.castle.castle_key == key:
+            return
+        text = ' '.join(list(agent._message_history[-6:]) + [agent.message or ''])
+        if 'here is too hard to dig' not in text and 'dig a pit in the' not in text:
+            return
+        agent.log(f'DIVE the wand zapped down at depth {agent.blstats.depth} left a pit / found the floor too hard: the castle')
+        self.undiggable.add(key)
+        self.castle.on_bottom(key)
+        try:
+            inv = '; '.join(f'{agent.inventory.items.get_letter(i)} - {i.text}' for i in agent.inventory.items.all_items)
+            agent.log(f'DIVE bottom reached at depth {agent.blstats.depth}; inventory: {inv}')
+            plan = '; '.join(f'{a} {i.text} ({why})' for a, i, why in power.passage_plan(agent))
+            agent.log(f'POWER passage plan at depth {agent.blstats.depth} AC {agent.blstats.armor_class}: {plan or "nothing"}')
+        except Exception as e:   # diagnostics only
+            agent.log(f'POWER passage plan failed: {e!r}')
 
     def _dig_escape_action(self):
         """DIG_ESCAPE: what digging out would do right now -- ('dig', tool), ('step', (y, x)) onto a diggable
@@ -7166,6 +7308,7 @@ class DiveLogic:
         if agent.current_level().key() == key and ('too hard to dig' in agent.message or
                                                     'here is too hard' in agent.message):
             self.undiggable.add(key)
+        self._zap_down_castle_check(key)
         if jf_config.WAND_STAIRS_FIX and agent.current_level().key() == key and \
                 'beam bounces off the' in agent.message:
             # zap.c zap_dig: on stairs or a ladder the beam hits the ceiling instead (a charge and a rock on
@@ -8504,7 +8647,17 @@ class DiveLogic:
             if here == valley.DOWN_STAIRS:
                 agent.log(f'VALLEY xorn: on the \'>\' at turn {bl.time}, hp {bl.hitpoints}/{bl.max_hitpoints}, '
                           f'going down')
+                level_before = agent.current_level()
                 agent.direction('>')
+                if jf_config.XORN_STAIRS_NOTE and agent.current_level().key() != level_before.key():
+                    # agent.move('>') records the staircase both ways; this raw '>' did not, so on the next level the
+                    # arrival square was an unknown floor to _wand_escape / _diggable_spot: the dig-down escapes fired on
+                    # the up stairs ('The beam bounces off the stairs and hits the ceiling', a rock on the head) three
+                    # times in a row next to a minotaur (vk routes-polyx14-cl5 jf88-s12~s1..s3)
+                    level_before.stair_destination[here] = (agent.current_level().key(),
+                                                            (int(agent.blstats.y), int(agent.blstats.x)))
+                    agent.current_level().stair_destination[(int(agent.blstats.y), int(agent.blstats.x))] = \
+                        (level_before.key(), here)
                 continue
             path = self._valley_rock_path(here)
             if not path or len(path) < 2:
@@ -8687,13 +8840,20 @@ class DiveLogic:
         if not low and not any(getattr(m[3], 'mname', '') in GEHENNOM_THREATS or
                                getattr(m[3], 'mlevel', 0) >= GEHENNOM_THREAT_LEVEL for m in adjacent):
             yield False
+        if jf_config.XORN_STAIRS_NOTE and ((int(bl.y), int(bl.x)) in level.stair_destination or
+                                           (level.key(), (int(bl.y), int(bl.x))) in self._bad_dig_spots):
+            yield False   # (a staircase, or a square the floor already refused: the beam bounces off the stairs)
         yield True
         agent.log(f'GEHENNOM escape: zapping {wand.text!r} down at hp {bl.hitpoints}/{bl.max_hitpoints}, '
                   f'next to {[m[3].mname for m in adjacent]}')
         key = level.key()
+        spot = (int(bl.y), int(bl.x))
         agent.zap(wand, '>')
         if agent.current_level().key() == key and 'too hard to dig' in agent.message:
             self.undiggable.add(key)
+        if jf_config.XORN_STAIRS_NOTE and agent.current_level().key() == key and \
+                'beam bounces off the' in agent.message:
+            self._bad_dig_spots.add((key, spot))
 
     # 'The wraith touches you!', 'The vampire lord bites!', "Wilmar's ghost touches you!" (mhitu.c hitmsg/missmu)
     _ATTACK_MSG = re.compile(r"[Tt]he ([a-z][a-z -]*?) (?:hits|misses|just misses|bites|touches|kicks|claws|butts|"
@@ -8911,10 +9071,14 @@ class DiveLogic:
             mons = agent.get_visible_monsters()
             turn = bl.time
             held = turn - (self._scare_drop_turn or turn)
+            pending = self.landing_pending()   # LANDING_FOCUS: the crusher's walk is ahead -- a short hold, no HP rest
             if held < jf_config.CASTLE_SCARE_HOLD and \
                     (any(max(abs(m[1] - y0), abs(m[2] - x0)) <= 2 for m in mons) or
-                     turn - getattr(self, '_scare_threat_turn', -10 ** 9) < 150):
+                     turn - getattr(self, '_scare_threat_turn', -10 ** 9) <
+                     (jf_config.LANDING_FOCUS_HOLD if pending else 150)):
                 return 'rest'
+            if pending:
+                return None
             return 'rest' if bl.hitpoints < GEHENNOM_SCARE_UNTIL * bl.max_hitpoints else None
         if level.key() not in self.undiggable and not self.in_valley() and tool is not None and \
                 not self.levitating() and self._diggable_spot(bl.y, bl.x, max_wet=8):

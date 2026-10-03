@@ -1197,6 +1197,11 @@ class Agent:
             self.stats_logger.log_event('container_untrap_fail')
             return self.message
 
+    def wish_prayer_timeout(self):
+        """WISH_PRAYER_HOLD: the prayer timeout the wishes granted so far have added (note_wish: 100 each on average, less one per turn)."""
+        est, turn = getattr(self, '_wish_timeout', (0, 0))
+        return max(0, est - (self.blstats.time - turn))
+
     def is_safe_to_pray(self, limit=500, certain_death=False):
         # pray.c: 'Since you are in Gehennom, Tyr can't help you' -- nothing is fixed, and unless the alignment
         # record is high the god gets angry (angrygods) -- so no prayer at all there, not even for certain death
@@ -1209,6 +1214,11 @@ class Agent:
         # hadn't cost any Luck and the prayer would have worked)
         # the dive's dwarf hunt: a peaceful kill may cost Luck -1, and prayers fail while Luck < 0
         if not certain_death and self.blstats.time < self.prayer_hold_until:
+            return False
+        # WISH_PRAYER_HOLD (vk_castle port): every wish adds 50..149 to the prayer timeout (zap.c makewish), a prayer fixes
+        # major trouble only at <= 200
+        if jf_config.WISH_PRAYER_HOLD and not certain_death and \
+                self.wish_prayer_timeout() > (240 if self._critically_low_hp() else 150):
             return False
         # after a failed prayer the god stays angry (pray.c: a too-soon prayer sets ugangr, Luck -3):
         # 45 of 46 prayers made within 500 turns of a failure failed again, some summoning a minion
@@ -3814,6 +3824,8 @@ class Agent:
         if not self.hunger_deep() or bl.hunger_state < Hunger.HUNGRY or self.character.prop.polymorph or \
                 self.global_logic.dive.levitating():
             yield False
+        if jf_config.CASTLE_INNER and bl.hunger_state < Hunger.WEAK and self.global_logic.dive.inner.eat_blocked():
+            yield False   # castle_inner: not in the hall / throne room / with an @ about (a meal is 5 turns, 1 in 7 rotten)
         # only Hungry: no tripe ration (eat.c: 'Yak - dog food!' makes a non-orc vomit half the time, confused and
         # stunned for ~14+ turns first -- sd-g1-public s2 ate one in its dig pit on Dlvl 13) and no tin (opening one
         # takes up to 50 turns); Weak: anything

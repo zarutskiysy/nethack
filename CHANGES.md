@@ -109,3 +109,12 @@
   `pf_cs911` (CleverShovel 911c949 pf_base, their wiz-hum-neu engine), `pf_dt284` (DT6A f284bd2 jawfish, their
   hea-hum/tou engine), `pf_s25p8m` (pf_s25p8 + daglar 50fa3c4's MINES_TOOL_TRIP line in `use_mines`). nhbot:
   `INV_FULL_LIST` (off; vkurenkov 4921bc3): a container check that raises mid-parse no longer leaves the item list cut.
+
+- **vk-castle (all OFF)**: a port of vkurenkov/nethacker s26 (4921bc3, MIT, AutoAscend lineage) castle work behind
+  default-off switches: `castle_crusher.py` + `passtune.py` (PASSTUNE_CRUSHER: the drawbridge tune by Mastermind,
+  then the bridge as a crusher), `castle_inner.py` (CASTLE_INNER: the walk from inside the shell to the tower chest's
+  wand of wishing; LIFT_EAST_DROP), the landing lane (LANDING_CRUSH_FIRST / LANDING_DIRECT / LANDING_ROUTE /
+  LANDING_FOCUS), route fixes (CASTLE_ZAP_RECOGNIZE, XORN_STAIRS_NOTE, POLY_RESUME, EAST_LATE_DOOR, WISH_ROUTE_FIRST,
+  INV_FULL_LIST, PREEMPT_SAFE's castle parts) and the wish route's T_ROUTE_FIRE / T_ROUTE_EARLY_CHARGE / T_ROUTE_TOP /
+  ROUTE_ELBERETH / ROUTE_RING_SWAP / WISH_PRAYER_HOLD. Not ported: castle_poly, supply/shop buying, wish_source
+  (lamps, thrones), id_engine, MATTOCK_SHIELD, Medusa re-entry. Tests: `tests/test_vk_castle.py`.

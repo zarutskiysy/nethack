@@ -86,6 +86,9 @@ TOWER_ORDER = ('NW', 'NE', 'SE', 'SW')
 
 
 class FrontDoor:
+    # PASSTUNE_CRUSHER (castle_crusher.Crusher) reuses the FRONT_V3 walk-in and wand leg without FRONT_V3 on
+    ALWAYS_V3 = False
+
     def __init__(self, dive):
         self.dive = dive
         self.agent = dive.agent
@@ -177,8 +180,10 @@ class FrontDoor:
         return self._tune_open() and jf_config.PT_V2 and bool(getattr(self.dive.tune, 'quiet_end', False))
 
     def _v3(self):
-        """The front-strong lane's behaviour: FRONT_V3, or a passtune hand-over (its walk, hold and tower code)."""
-        return jf_config.FRONT_V3 or self._tune_open()
+        """The front-strong lane's behaviour: FRONT_V3, a passtune hand-over (CASTLE_PASSTUNE: its walk, hold and tower
+        code), or a subclass that always walks it (ALWAYS_V3: vk-castle's Crusher). integ merge: castle-wish and
+        vk-castle each added a _v3(); this one serves both (all three terms are False with the flags off)."""
+        return jf_config.FRONT_V3 or self.ALWAYS_V3 or self._tune_open()
 
     def on_castle(self):
         c = self.dive.castle
@@ -903,6 +908,11 @@ class FrontDoor:
         self._mile('taming')
         return True
 
+    def _wand_defend(self, near):
+        """Hook: a defensive move against an adjacent hostile before the wand leg's retreat/fight decision. FRONT_V3
+        has none (always False); PASSTUNE_CRUSHER's Crusher overrides it (PASSTUNE_SCARE_WALKIN)."""
+        return False
+
     def _hold_square(self):
         if self.hold_i == 1:
             return HALL_HOLD
@@ -1018,6 +1028,8 @@ class FrontDoor:
             return self._test_wand(wand)
         near = self._near()
         if near and self._read_taming(near):
+            return True
+        if near and self._wand_defend(near):
             return True
         if near and self._hp_frac() < RETREAT_HP and pos in THRONE_ROOM and self.retreats < MAX_RETREATS:
             self.phase = None

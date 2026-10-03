@@ -14,6 +14,8 @@ from . import castle_cross
 from . import castle_treasury
 from . import castle_front
 from . import castle_tune
+from . import castle_crusher
+from . import castle_inner
 from . import castle_landing
 from . import mino_guard
 from . import known_items
@@ -1199,6 +1201,20 @@ class GlobalLogic:
             .preempt(self.agent, [
                 self.dive.castle.crossing_strategy(),
             ])
+            # castle-redteam (PASSTUNE_CRUSHER, castle_crusher.py; vk_castle port of vkurenkov s26): a tonal instrument in the
+            # pack on the castle -> the passtune by Mastermind at the drawbridge, then the bridge toggled on whatever comes
+            # over it -- above the crossing (at a castle on 25-28 a lift gives one level, the tower wand a pass), below the
+            # known-lift rushes
+            .preempt(self.agent, [
+                castle_crusher.strategy(self.dive),
+            ])
+            # castle-inner (CASTLE_INNER, castle_inner.py; vk_castle port): anywhere inside the castle shell -- the lock-out
+            # square after the crusher, the portcullis after a no-tune entry, the east hall -- the walk to the wand of
+            # wishing: the throne room, its locked door, a hallway, a tower, the chest. Yields while the Crusher is still
+            # crushing (and, LIFT_EAST_DROP, while a lift crossing hovers over the east trap door)
+            .preempt(self.agent, [
+                castle_inner.strategy(self.dive),
+            ])
             # HUNGER_DEEP: deep in the dive eat what we carry when Hungry -- above fight2 and the castle crossing,
             # which kept a castle arrival from its tripe ration until it fainted on the moat's edge (agent.eat_deep)
             .preempt(self.agent, [
@@ -1255,6 +1271,11 @@ class GlobalLogic:
             # above the emergency, which it lets pray first when a safe prayer is due (low HP)
             .preempt(self.agent, [
                 self.mino.strategy(),
+            ])
+            # t-route (T_ROUTE_TOP; vk_castle port): the wish route above the minotaur guard, KNOWN_ITEMS and the emergency
+            # layer (a safe prayer due still goes first): a pass beats a won fight, and the route needs 6-9 uninterrupted turns
+            .preempt(self.agent, [
+                tele_route.teleport_route_strategy(self.agent, top=True),
             ])
             # lift-ready (LIFT_PLUNGE, castle_cross.py): on a castle trap door, not levitating -> '>' into the Valley,
             # above everything (the Valley is banked progress whatever our HP)
