@@ -1707,6 +1707,8 @@ MEDUSA_STRANDED_REROLLS = 6
 # the rest land in the room again (TELEPORT_REGION (02,03,05,16) down). The '<' is taken from the fixed map while
 # the dark room hasn't shown it (medusa_maps.STAIRS_UP). (HOLE_CYCLE on every variant was rejected, mcb0/mcb1 -0.0147:
 # it cost passes on medusa-1/-4; on medusa-2 pick-only kits it went 2 -> 4 of 9, cycling in only 2 of them.)
+# NEVER ENABLE (integ round 2, research/med2_titan.md): its dev arm lost 14 Medusa-2 passes and won 1 on 56 matched
+# games -- the walks to the '<' ran into the titan. MEDUSA2_TITAN is its replacement.
 MEDUSA2_CYCLE = False
 MEDUSA2_CYCLE_MAX = 12              # climbs off Medusa-2
 MEDUSA2_CYCLE_HOLE_STEPS = 40       # BFS steps up there we walk to our old hole (else the dive digs a new one)
