@@ -1020,6 +1020,8 @@ class GlobalLogic:
                            self.agent.blstats.hunger_state >= Hunger.HUNGRY and
                            self.dive.edible_corpse_within(jf_config.DIVE_EAT_RADIUS)),
                 self.agent.eat_from_inventory().every(5),
+                # MISSILE_RECOVER: our thrown daggers a few steps away (the dig-dive never gathers items)
+                self.dive.missile_recover_strategy().every(3).condition(lambda: jf_config.MISSILE_RECOVER),
                 self.agent.inventory.buy_food().every(3),
                 # power (SELL_PRICE_ID): offer unknown potions/rings/boots to a shopkeeper for their price group
                 self.agent.inventory.sell_price_identify().every(3),
