@@ -108,6 +108,9 @@ MAPS = {
 STAIRS_UP = {'medusa-2': (9 + 1, 4 + XOFF)}
 # squares of that room to keep off on the way: its boulder (medusa.des OBJECT boulder (04,04)) and magic trap (03,12)
 AVOID = {'medusa-2': frozenset({(4 + 1, 4 + XOFF), (12 + 1, 3 + XOFF)})}
+# where medusa.des puts the titan (MONSTER ('H',"titan"),(02,05)), screen coordinates: on our first landing (the level
+# is made as we fall in) it is there or a move or two off (jf_config.MEDUSA2_TITAN's race to the '<')
+TITAN_START = {'medusa-2': (5 + 1, 2 + XOFF)}
 
 
 def char_at(name, y, x):

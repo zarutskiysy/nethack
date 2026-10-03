@@ -1070,6 +1070,10 @@ class DiveLogic:
         self._elbereth_intact_before = False
         self._titan_levels = set()         # MEDUSA2_CYCLE: Medusa's level keys recognised by their titan (Medusa-2)
         self._m2_stair_bad = set()         # MEDUSA2_CYCLE: level keys where the map's '<' wasn't there
+        self._m2_titan_seen = {}           # MEDUSA2_TITAN: level key -> ((y, x), turn, peaceful) of the titan last seen
+        self._m2_left = {}                 # MEDUSA2_TITAN: level key -> turn we last left that titan level
+        self._m2_exit = {}                 # MEDUSA2_TITAN: (level key, arrival turn) -> leave by the '<' this landing?
+        self._m2_travels = {}              # MEDUSA2_TITAN: (level key, hole) -> travel commands made toward the old hole
         self._dig_stopped = {}             # ELBERETH_ATTACKED_REWRITE: Elbereth spot -> turn an apply there was cut short
         self._attacked_turn = -1           # ELBERETH_ATTACKED_REWRITE: last turn a melee attack on us was reported
         self._attacked_writes = {}         # ELBERETH_ATTACKED_REWRITE: Elbereth spot -> extra writes made past the caps
@@ -1142,7 +1146,12 @@ class DiveLogic:
             self.medusa_level = key   # (see jf_config.MEDUSA_TITAN_MSG)
             self._titan_levels.add(key)
             agent.log(f'DIVE Medusa level detected: {key} depth {agent.blstats.depth} (Medusa-2: titan named)')
+        if jf_config.MEDUSA2_TITAN:
+            self._m2_track_titan(key, turn)
         if key != self._last_level_key:
+            if jf_config.MEDUSA2_TITAN and self._last_level_key is not None and \
+                    self._is_titan_level(self._last_level_key):
+                self._m2_left[self._norm_key(self._last_level_key)] = turn   # (MEDUSA2_TITAN) frozen from here on
             self._last_level_key = key
             self._raven_arrival_turn = turn   # RAVEN_CYCLE: floods count per visit
         if key == self.medusa_level and 'fills with water' in agent.message:
@@ -4325,6 +4334,9 @@ class DiveLogic:
         if what == 'hole_walk':
             self._raven_step_toward(arg)
             return
+        if what == 'hole_travel':
+            self._m2_travel(arg)   # MEDUSA2_TITAN
+            return
         if what == 'plunge':
             self._medusa_plunge(arg)
             return
@@ -5414,39 +5426,138 @@ class DiveLogic:
 
     def _medusa2_cycle_kit(self):
         """jf_config.MEDUSA2_CYCLE: Medusa's level is Medusa-2 (recognised by its titan) and our kit is one that loses
-        there -- no known wand of digging, not a dwarf, not lawful (see the flag)."""
-        if self.medusa_level is None or not any(int(k[0]) == int(self.medusa_level[0]) and
-                                                int(k[1]) == int(self.medusa_level[1]) for k in self._titan_levels):
+        there -- no known wand of digging, not a dwarf, not lawful (see the flag). MEDUSA2_TITAN_LAWFUL: a lawful hero
+        too once the titan was seen hostile there (peace_minded: hostile 1 time in 11)."""
+        if self.medusa_level is None or not self._is_titan_level(self.medusa_level):
             return False
         ch = self.agent.character
-        if ch.race == Character.DWARF or ch.alignment == Character.LAWFUL:
+        if ch.race == Character.DWARF:
             return False
+        if ch.alignment == Character.LAWFUL:
+            seen = self.__dict__.get('_m2_titan_seen', {}).get(self._norm_key(self.medusa_level))
+            if not (jf_config.MEDUSA2_TITAN and jf_config.MEDUSA2_TITAN_LAWFUL and seen is not None and not seen[2]):
+                return False
         return self._dig_wand() is None
 
+    @staticmethod
+    def _norm_key(key):
+        return int(key[0]), int(key[1])
+
+    def _is_titan_level(self, key):
+        k = self._norm_key(key)
+        return any(self._norm_key(t) == k for t in self._titan_levels)
+
     def _cycle_on(self):
-        """MEDUSA_HOLE_CYCLE everywhere, or jf_config.MEDUSA2_CYCLE's Medusa-2 subset of it."""
-        return MEDUSA_HOLE_CYCLE or (jf_config.MEDUSA2_CYCLE and self._medusa2_cycle_kit())
+        """MEDUSA_HOLE_CYCLE everywhere, or jf_config.MEDUSA2_CYCLE's (MEDUSA2_TITAN's) Medusa-2 subset of it."""
+        return MEDUSA_HOLE_CYCLE or ((jf_config.MEDUSA2_CYCLE or jf_config.MEDUSA2_TITAN) and
+                                     self._medusa2_cycle_kit())
+
+    def _m2_titan_on(self):
+        """jf_config.MEDUSA2_TITAN is what drives the cycle (not the all-variant MEDUSA_HOLE_CYCLE)."""
+        return jf_config.MEDUSA2_TITAN and not MEDUSA_HOLE_CYCLE
 
     def _cycle_max(self):
-        return MEDUSA_HOLE_CYCLE_MAX if MEDUSA_HOLE_CYCLE else jf_config.MEDUSA2_CYCLE_MAX
+        if MEDUSA_HOLE_CYCLE:
+            return MEDUSA_HOLE_CYCLE_MAX
+        return jf_config.MEDUSA2_TITAN_MAX if jf_config.MEDUSA2_TITAN else jf_config.MEDUSA2_CYCLE_MAX
 
     def _cycle_hole_steps(self):
         # MEDUSA2_CYCLE: a walk to the old hole (a 1-in-4 skip) beats a new pick-axe hole (~24 dig turns, and its own
         # fall drops exactly one level: dig.c digactualhole -- straight back into the titan's room)
-        return MEDUSA_HOLE_CYCLE_HOLE_STEPS if MEDUSA_HOLE_CYCLE else jf_config.MEDUSA2_CYCLE_HOLE_STEPS
+        if MEDUSA_HOLE_CYCLE:
+            return MEDUSA_HOLE_CYCLE_HOLE_STEPS
+        return jf_config.MEDUSA2_TITAN_HOLE_STEPS if jf_config.MEDUSA2_TITAN else jf_config.MEDUSA2_CYCLE_HOLE_STEPS
 
     def _m2_map_stair(self, level):
         """MEDUSA2_CYCLE: Medusa-2's '<' from the fixed map (medusa_maps.STAIRS_UP), or None (another variant, or the
         map's square turned out not to hold it)."""
-        if not jf_config.MEDUSA2_CYCLE or MEDUSA_HOLE_CYCLE or not self._medusa2_cycle_kit() or \
-                level.key() in self._m2_stair_bad:
+        if not (jf_config.MEDUSA2_CYCLE or jf_config.MEDUSA2_TITAN) or MEDUSA_HOLE_CYCLE or \
+                not self._medusa2_cycle_kit() or level.key() in self._m2_stair_bad:
             return None
         from . import medusa_maps
         return medusa_maps.STAIRS_UP['medusa-2']
 
-    def _m2_static_step(self, target):
-        """MEDUSA2_CYCLE: the next square toward `target` by Medusa-2's fixed map (its unlit room shows only what is
-        next to us), avoiding its boulder and magic trap and squares we know can't be walked; None if no step helps."""
+    def _m2_track_titan(self, key, turn):
+        """MEDUSA2_TITAN: remember where the titan was last seen on a titan level (its glyph; the dark room shows it
+        through infravision or from next to it). The level freezes while we are away (no catch-up moves), so a sighting
+        just before we left is where a later landing finds it."""
+        if DiveLogic.TITAN is None or not self._is_titan_level(key):
+            return
+        agent = self.agent
+        pos = utils.isin(agent.glyphs, [DiveLogic.TITAN]).nonzero()
+        if len(pos[0]) == 0:
+            return
+        y, x = int(pos[0][0]), int(pos[1][0])
+        peaceful = bool(agent.monster_tracker.peaceful_monster_mask[y, x])
+        self.__dict__.setdefault('_m2_titan_seen', {})[self._norm_key(key)] = ((y, x), int(turn), peaceful)
+
+    def _m2_titan_guess(self, key, up):
+        """MEDUSA2_TITAN: ((y, x), source) -- where the titan probably is for the race to the '<': seen this landing,
+        or seen just before we left (frozen since), or its medusa.des square in the first turns of our first landing;
+        else the '<' itself (a re-landing: it chased us there when we left)."""
+        from . import medusa_maps
+        k = self._norm_key(key)
+        seen = self.__dict__.get('_m2_titan_seen', {}).get(k)
+        arrival = self.__dict__.get('_raven_arrival_turn', -1)
+        if seen is not None:
+            pos, t, _ = seen
+            if t >= arrival:
+                return pos, 'seen'
+            left = self.__dict__.get('_m2_left', {}).get(k)
+            if left is not None and t >= left - 2:
+                return pos, 'frozen'
+        if self._medusa_cycles == 0 and seen is None and self.agent.blstats.time - arrival <= 2:
+            return medusa_maps.TITAN_START['medusa-2'], 'start'   # (later it has had moves of its own)
+        return up, 'unknown'
+
+    def _m2_exit_gate(self, level, up):
+        """MEDUSA2_TITAN: leave this landing by her '<'? Decided once per landing (a sticky answer: no dig given up
+        half-way, no walk begun and dropped). Yes only if the '<' is at most MEDUSA2_TITAN_EXIT_STEPS fixed-map steps
+        away, no monster stands on it, and the titan can't be there before us: it moves 18 to our 12, and from next to
+        the '<' it blocks the way or hits us on the climb (a psi bolt averages 31) -- unless it is behind us (nearer
+        to us than to the '<', but not next to us): then it chases instead of blocking. A titan nearer the '<' must
+        not reach the square beside it before we stand on it (its steps / 1.5 + MEDUSA2_TITAN_EXIT_SLACK turns): from
+        its medusa.des square (4 from the '<') that is a landing 2 steps away; unknown on a re-landing it is assumed
+        on the '<' (it chased us there before we left), so only a sighting lets us go. Otherwise the usual dig."""
+        agent = self.agent
+        bl = agent.blstats
+        landing = (self._norm_key(level.key()), self.__dict__.get('_raven_arrival_turn', -1))
+        decided = self.__dict__.setdefault('_m2_exit', {})
+        if landing in decided:
+            return decided[landing]
+        here = (int(bl.y), int(bl.x))
+        steps = self._m2_static_dist(up).get(here)
+
+        def cheb(a, b):
+            return max(abs(int(a[0]) - int(b[0])), abs(int(a[1]) - int(b[1])))
+
+        ok, why = True, ''
+        if steps is None or steps > jf_config.MEDUSA2_TITAN_EXIT_STEPS:
+            ok, why = False, f'her < is {steps} steps away'
+        elif here != up and bool(agent.monster_tracker.monster_mask[up]):
+            ok, why = False, 'a monster stands on her <'
+        else:
+            tpos, src = self._m2_titan_guess(level.key(), up)
+            to_up, to_us = cheb(tpos, up), cheb(tpos, here)
+            behind = 2 <= to_us < to_up
+            race = steps <= max(0, to_up - 1) / 1.5 + jf_config.MEDUSA2_TITAN_EXIT_SLACK
+            why = f'titan ({src}) at {tpos}: {to_up} from her <, {to_us} from us'
+            if not (behind or race):
+                ok = False
+        decided[landing] = ok
+        agent.log(f'MEDUSA2_TITAN: {"leave by" if ok else "dig here, not by"} her < at {up} from {here} '
+                  f'({steps} steps; {why}; climb {self._medusa_cycles + 1}, '
+                  f'hp {bl.hitpoints}/{bl.max_hitpoints})')
+        return ok
+
+    def _m2_exit_abort(self, level, why):
+        """MEDUSA2_TITAN: give this landing's walk to the '<' up -- dig where we stand (never hit our way through)."""
+        landing = (self._norm_key(level.key()), self.__dict__.get('_raven_arrival_turn', -1))
+        self.__dict__.setdefault('_m2_exit', {})[landing] = False
+        self.agent.log(f'MEDUSA2_TITAN: walk to her < given up ({why}): digging here')
+
+    def _m2_static_dist(self, target):
+        """MEDUSA2_CYCLE: fixed-map BFS distances to `target` over Medusa-2's room floor (see _m2_static_step)."""
         from . import medusa_maps
         agent = self.agent
         level = agent.current_level()
@@ -5472,6 +5583,13 @@ class DiveLogic:
                             dist[p] = dist[(y, x)] + 1
                             nxt.append(p)
             frontier = nxt
+        return dist
+
+    def _m2_static_step(self, target):
+        """MEDUSA2_CYCLE: the next square toward `target` by Medusa-2's fixed map (its unlit room shows only what is
+        next to us), avoiding its boulder and magic trap and squares we know can't be walked; None if no step helps."""
+        agent = self.agent
+        dist = self._m2_static_dist(target)
         here = (int(agent.blstats.y), int(agent.blstats.x))
         steps = [(dist[p], (p[0] - target[0]) ** 2 + (p[1] - target[1]) ** 2, p)
                  for p in ((here[0] + dy, here[1] + dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1))
@@ -5502,6 +5620,14 @@ class DiveLogic:
             # the '<' we came down by shows us, not the stairs: the stair memory knows it
             ups |= {(int(p[0]), int(p[1])) for p, dest in level.stair_destination.items()
                     if dest[0][0] == level.dungeon_number and dest[0][1] < level.level_number}
+            if self._m2_titan_on():
+                # (MEDUSA2_TITAN) one decision per landing: the '<' if close and the titan can't beat us to it
+                up = min(((int(dis[p]) if dis[p] >= 0 else 99, p) for p in ups), default=(None, None))[1]
+                if up is None:
+                    up = self._m2_map_stair(level)
+                if up is None or not self._m2_exit_gate(level, up):
+                    return None
+                return ('cycle_up', up)
             reachable = [(dis[p], p) for p in ups if 0 <= dis[p] <= MEDUSA_HOLE_CYCLE_STEPS]
             if not reachable:
                 # MEDUSA2_CYCLE: her dark room shows its '<' only from next to it -- the fixed map knows where it is
@@ -5521,6 +5647,14 @@ class DiveLogic:
                         0 <= dis[hy + dy, hx + dx] <= self._cycle_hole_steps()]
                 if near:
                     return ('hole_walk', min(near)[1])
+                if self._m2_titan_on() and \
+                        self.__dict__.get('_m2_travels', {}).get((self._norm_key(level.key()), hole), 0) < \
+                        jf_config.MEDUSA2_TITAN_TRAVELS:
+                    # (MEDUSA2_TITAN) we came up by the '>', the hole is where we landed from the level above: the
+                    # map between is mostly unknown. Rest first (a long walk on a deep level), then travel there.
+                    if bl.hitpoints < MEDUSA_HOLE_CYCLE_REST * bl.max_hitpoints and not self._in_own_pit():
+                        return ('cycle_hold', None) if self._near_hostiles(radius=2) else ('cycle_rest', None)
+                    return ('hole_travel', hole)
                 hole = None   # too far: the dive digs a new one
         # every landing down there costs HP (bc-smoke: 53 of 81 in 6 turns among Medusa-3's ravens): rest up here
         # first -- beside the hole (the walk above comes first), or before digging one; fight what is close
@@ -5540,6 +5674,9 @@ class DiveLogic:
                           f'hp {agent.blstats.hitpoints}/{agent.blstats.max_hitpoints})')
             start = (agent.blstats.y, agent.blstats.x)
             turn = agent.blstats.time
+            if self._m2_titan_on():
+                self._m2_exit_step(level, up)
+                return
             if agent.bfs()[up] == -1 and self._m2_map_stair(level) == up:
                 # (MEDUSA2_CYCLE) the map's '<', not in view yet: one step by the fixed map
                 step = self._m2_static_step(up)
@@ -5572,6 +5709,61 @@ class DiveLogic:
             self._medusa_cycles += 1
             # the '>' we stand on leads straight back onto her '<': our hole is the way down
             self._avoid_stairs_until[(agent.current_level().key(), (agent.blstats.y, agent.blstats.x))] = 10 ** 9
+
+    def _m2_exit_step(self, level, up):
+        """MEDUSA2_TITAN: one step of the walk to her '<' -- by the known map, else the fixed one. A monster on the
+        step (seen, remembered, or one the move bumps into) ends the walk for this landing: the titan blocking the
+        '<' is what killed MEDUSA2_CYCLE's walks (hitting it while it psi-bolts and summons), so we dig instead."""
+        agent = self.agent
+        here = (int(agent.blstats.y), int(agent.blstats.x))
+        step = None
+        dis = agent.bfs()
+        if dis[up] > 0:
+            path = agent.path(here[0], here[1], up[0], up[1])
+            if len(path) >= 2:
+                step = (int(path[1][0]), int(path[1][1]))
+        if step is None:
+            step = self._m2_static_step(up)
+        if step is None:
+            self._m2_exit_abort(level, 'no way to it')
+            return
+        if bool(agent.monster_tracker.monster_mask[step]) or \
+                agent.glyphs[step] == nh.GLYPH_INVISIBLE:
+            self._m2_exit_abort(level, f'a monster on {step}')
+            return
+        turn = agent.blstats.time
+        try:
+            agent.move(*step)
+        except AgentPanic as e:
+            moved = (int(agent.blstats.y), int(agent.blstats.x)) != here
+            if 'Monster on a next tile' in str(e) and not moved:
+                self._m2_exit_abort(level, f'bumped into a monster at {step}')
+                return
+            if not moved:
+                self._m2_exit_abort(level, f'the step to {step} failed')
+            raise
+        if (int(agent.blstats.y), int(agent.blstats.x)) == here and agent.blstats.time == turn:
+            self._m2_exit_abort(level, f'no step to {step}')   # (never a loop of moves that take no time)
+
+    def _m2_travel(self, hole):
+        """MEDUSA2_TITAN: NetHack's travel command toward our old hole on the level above (findtravelpath guesses
+        toward the nearest known square when the map doesn't reach it; each call shows more of the level). It stops
+        beside the hole (travel never steps onto a known trap); the plunge follows. No progress: give the hole up."""
+        agent = self.agent
+        key = (self._norm_key(agent.current_level().key()), hole)
+        travels = self.__dict__.setdefault('_m2_travels', {})
+        travels[key] = travels.get(key, 0) + 1
+        start = (int(agent.blstats.y), int(agent.blstats.x))
+        agent.log(f'MEDUSA2_TITAN: travelling toward our old hole at {hole} from {start} ({travels[key]})')
+        try:
+            agent._fast_go_to(*hole)
+        except AssertionError as e:   # (the travel cursor didn't go where we steered it)
+            agent.log(f'MEDUSA2_TITAN: travel failed ({e!r})')
+        except AgentPanic:
+            travels[key] = max(travels[key], jf_config.MEDUSA2_TITAN_TRAVELS)
+            raise
+        if (int(agent.blstats.y), int(agent.blstats.x)) == start:
+            travels[key] = max(travels[key], jf_config.MEDUSA2_TITAN_TRAVELS)   # stuck: the dive digs a new hole
 
     def _medusa_plunge(self, hole):
         agent = self.agent
