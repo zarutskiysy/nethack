@@ -920,6 +920,7 @@ class DiveLogic:
         self._crowd_retreats = {}          # ARRIVAL_FIX: (level key, '>' position) above -> crowd retreats taken
         self._avoid_stairs_until = {}      # (level key, (y, x)) -> turn: don't take this '>' before
         self._retreat_blocked_until = -1   # turn until which a failed retreat isn't retried
+        self._stair_escape_arrival = None  # STAIR_ESCAPE: (level key, turn) of the last escape down a '>'
         self._dig_tries = {}               # level key -> pick-axe applies without falling through
         self._dig_blocked_until = -1       # turn until which applying the pick-axe isn't retried
         self._fetch = None                 # (level key, (y, x), turn started) of a known pick-axe
@@ -2683,12 +2684,25 @@ class DiveLogic:
             yield False
         crowd = self._crowded_arrival()
         in_trouble = bl.hitpoints < RETREAT_BELOW * bl.max_hitpoints or self._fast_hp_loss()
-        if crowd is None and (RETREAT_BELOW <= 0 or not in_trouble or not self._near_hostiles(radius=3)):
-            yield False
-        if DIG_ESCAPE and crowd is None and self._dig_escape_action() is not None:
+        trouble = not (RETREAT_BELOW <= 0 or not in_trouble or not self._near_hostiles(radius=3))
+        # STAIR_ESCAPE: also right after an answered prayer while the fight goes on (post_prayer), and AT_STAIRS:
+        # a '>' we reach before an Elbereth-ignorer in view reaches us (at_plan: ((y, x), why))
+        post_prayer = at_plan = None
+        if crowd is None and not trouble:
+            if jf_config.STAIR_ESCAPE:
+                post_prayer = self._post_prayer_engaged()
+            if not post_prayer and jf_config.AT_STAIRS:
+                at_plan = self._at_stairs_plan()
+            if not post_prayer and at_plan is None:
+                yield False
+        if DIG_ESCAPE and crowd is None and at_plan is None and self._dig_escape_action() is not None:
             # digging out under Elbereth beats walking to a '<' with the monsters following (base-jf14 s3 ping-
             # ponged between Medusa-3's ravens and a fire giant upstairs until it died)
             yield False
+        if at_plan is not None:
+            yield True
+            self._stair_escape_down(at_plan[0], at_plan[1])
+            return
         if crowd is not None:
             self._avoid_stairs_until[crowd] = bl.time + ARRIVAL_RETREAT_REST
             self._crowd_retreats[crowd] = self._crowd_retreats.get(crowd, 0) + 1
@@ -2705,6 +2719,8 @@ class DiveLogic:
             # a crowd retreat only from (or next to) the '<' we came down: walking back to it through the
             # crowd is what kills (dive-safety, Medusa-3 harness: walking among the ravens)
             reach = 1
+        if post_prayer:
+            reach = max(reach, jf_config.STAIR_ESCAPE_REACH)
         ups = [p for p in zip(*utils.isin(level.objects, G.STAIR_UP).nonzero())
                if 0 <= dis[p] <= reach]
         if ARRIVAL_FIX and self._arrival_square is not None and self._arrival_square[0] == level.key():
@@ -2712,9 +2728,22 @@ class DiveLogic:
             p = self._arrival_square[1]
             if 0 <= dis[p] <= reach and p not in ups:
                 ups.append(p)
-        if not ups:
+        down = None
+        if jf_config.STAIR_ESCAPE and crowd is None:
+            # no bounce: the '<' we just escaped down by leads back into that fight
+            ups = [p for p in ups if not self._stair_escape_bounce(level, p)]
+            if jf_config.STAIR_ESCAPE_DOWN:
+                down = self._escape_down_target(dis, reach)
+                if down is not None and ups and \
+                        dis[down] > min(dis[p] for p in ups) + jf_config.STAIR_ESCAPE_DOWN_SLACK:
+                    down = None   # the '<' is much closer
+        if not ups and down is None:
             yield False
         yield True
+        if down is not None:
+            why = 'answered prayer, fight on' if post_prayer else 'hurt'
+            self._stair_escape_down(down, why)
+            return
         y, x = min(ups, key=lambda p: dis[p])
         agent.log(f'RETREAT upstairs at hp {bl.hitpoints}/{bl.max_hitpoints}')
         # don't come straight back down the same staircase into the same fight
@@ -2728,6 +2757,142 @@ class DiveLogic:
                 agent.move('<')
         finally:
             if (agent.blstats.y, agent.blstats.x, agent.current_level().key()) == start:
+                self._retreat_blocked_until = agent.blstats.time + 15
+
+    # ------------------------------------------------------- stair escape
+
+    def _stair_escape_level_ok(self):
+        """STAIR_ESCAPE / AT_STAIRS act mid-dive on the Dungeons of Doom main line from STAIR_ESCAPE_MIN_DEPTH, above
+        Medusa's level (her level, the mazes and the castle keep their own plans)."""
+        agent = self.agent
+        level = agent.current_level()
+        if not self.diving or level.dungeon_number != Level.DUNGEONS_OF_DOOM or \
+                agent.blstats.depth < jf_config.STAIR_ESCAPE_MIN_DEPTH:
+            return False
+        if self.medusa_level is not None and int(level.level_number) >= int(self.medusa_level[1]):
+            return False
+        return True
+
+    def _escape_down_ok(self):
+        """A '>' here may be taken to escape: the level below is not Medusa's (arriving hurt next to her island, or
+        unrecognised) -- below MEDUSA_MIN_DEPTH while her level is unknown."""
+        if not self._stair_escape_level_ok():
+            return False
+        below = int(self.agent.current_level().level_number) + 1
+        limit = int(self.medusa_level[1]) if self.medusa_level is not None else MEDUSA_MIN_DEPTH
+        return below < limit
+
+    def _escape_down_target(self, dis, reach):
+        """STAIR_ESCAPE_DOWN: the nearest reachable '>' within reach (y, x), else None. A '>' banks a level (the score
+        is the deepest level reached) and leaves behind every monster that doesn't follow: only an adjacent M2_STALK
+        one comes along (dog.c keepdogs: monnear && levl_follower; mondata.c levl_follower) -- elves, soldier ants,
+        wolves, leocrottae, vortices never do."""
+        if not self._escape_down_ok():
+            return None
+        agent = self.agent
+        level = agent.current_level()
+        best = None
+        for y, x in zip(*utils.isin(level.objects, G.STAIR_DOWN).nonzero()):
+            p = (int(y), int(x))
+            if not (0 <= dis[p] <= reach) or not self._stairs_ok(level, *p) or \
+                    self._avoid_stairs_until.get((level.key(), p), -1) > agent.blstats.time:
+                continue
+            if best is None or dis[p] < dis[best]:
+                best = p
+        return best
+
+    def _stair_escape_bounce(self, level, p):
+        """STAIR_ESCAPE: the '<' we arrived on by an escape down, within STAIR_ESCAPE_NO_BOUNCE turns -- up there is
+        the fight we just left."""
+        arr = self._stair_escape_arrival
+        if arr is None or arr[0] != level.key() or self.agent.blstats.time - arr[1] > jf_config.STAIR_ESCAPE_NO_BOUNCE:
+            return False
+        sq = self._arrival_square
+        return sq is not None and sq[0] == level.key() and tuple(int(v) for v in sq[1]) == tuple(int(v) for v in p)
+
+    def _post_prayer_engaged(self):
+        """STAIR_ESCAPE: an answered prayer within STAIR_ESCAPE_PRAYED turns and the fight still on -- an
+        Elbereth-ignoring meleer within 3, or HP back below STAIR_ESCAPE_PRAYED_HP with a hostile within 3. Of 286
+        answered HP prayers at Dlvl 10-20 in current-code dev games, 166 died within 40 turns (a median 8 turns
+        later): the prayer restores HP but not the fight, and the next crisis has no prayer (research/middive.md)."""
+        agent = self.agent
+        bl = agent.blstats
+        last = agent.last_prayer_turn
+        if last is None or agent.prayer_failed or bl.time - last > jf_config.STAIR_ESCAPE_PRAYED:
+            return False
+        if not self._stair_escape_level_ok():
+            return False
+        near = self._near_hostiles(radius=3)
+        if not near:
+            return False
+        if any(self._melee_ignores_elbereth(m[3]) for m in near):
+            return True
+        return bl.hitpoints < jf_config.STAIR_ESCAPE_PRAYED_HP * bl.max_hitpoints
+
+    def _at_stairs_plan(self):
+        """AT_STAIRS: an Elbereth-ignoring meleer (elf, soldier, other @, minotaur, A) in view within AT_STAIRS_RADIUS
+        steps, we are hurt or there are two of them, not in our pit, and a '>' we reach while it is still at least
+        two steps from us: ((y, x), why), else None. Diving levels where such a monster was in view when the dig
+        began died 30% of the time (31 of 104; quiet levels 0.9%), and a pit blinds us to everything but the
+        adjacent squares (vision.c: u.utrap TT_PIT) while every attack stops the dig (mhitu.c stop_occupation)."""
+        if not self._escape_down_ok() or self._in_own_pit():
+            return None
+        agent = self.agent
+        bl = agent.blstats
+        key = agent.current_level().key()
+        dis = agent.bfs()
+        plan = None
+        ats = [m for m in agent.get_visible_monsters()
+               if getattr(m[3], 'mname', 'unknown') != 'unknown' and self._melee_ignores_elbereth(m[3]) and
+               0 < m[0] <= jf_config.AT_STAIRS_RADIUS]
+        if ats and (bl.hitpoints < bl.max_hitpoints or len(ats) >= 2):
+            d_at = min(int(m[0]) for m in ats)
+            down = self._escape_down_target(dis, d_at - 2)
+            # not toward it: the '>' must be further from every one of them than from us
+            if down is not None and \
+                    all(max(abs(int(m[1]) - down[0]), abs(int(m[2]) - down[1])) > dis[down] for m in ats):
+                plan = (down, f'{[m[3].mname for m in ats[:3]]} at {d_at}')
+        mem = self.__dict__.get('_at_stairs_mem')
+        if plan is not None:
+            self._at_stairs_mem = (key, plan, bl.time + jf_config.AT_STAIRS_MEMORY)
+            return plan
+        # once started, the walk goes on for AT_STAIRS_MEMORY turns though the @ drops out of view or range
+        if mem is not None and mem[0] == key and bl.time <= mem[2] and \
+                self._escape_down_target(dis, jf_config.AT_STAIRS_RADIUS) == mem[1][0]:
+            return mem[1]
+        return None
+
+    def _stair_escape_down(self, target, why):
+        """STAIR_ESCAPE / AT_STAIRS: one step toward the '>' at target, or down it."""
+        agent = self.agent
+        bl = agent.blstats
+        level = agent.current_level()
+        y, x = target
+        key = (level.key(), (bl.time // 10))
+        if key not in self.__dict__.setdefault('_stair_escape_logged', set()):
+            self._stair_escape_logged.add(key)
+            agent.log(f'STAIR_ESCAPE down to {target} ({why}) at hp {bl.hitpoints}/{bl.max_hitpoints}, '
+                      f'hostiles {[(m[3].mname, int(m[0])) for m in agent.get_visible_monsters()[:4]]}')
+        start = (bl.y, bl.x, level.key())
+        above = (level.key(), (y, x))
+        try:
+            if (bl.y, bl.x) != (y, x):
+                agent.go_to(y, x, max_steps=1)
+            if (agent.blstats.y, agent.blstats.x) == (y, x) and agent.current_level().key() == level.key():
+                if ARRIVAL_FIX:
+                    self._arrival_pending = (above[0], above[1], agent.blstats.time)
+                # no crowded-arrival retreat back up into the fight we leave (_crowded_arrival: one per staircase;
+                # set before the move, whose update runs the preempt checks on the new level)
+                self._crowd_retreats[above] = self._crowd_retreats.get(above, 0) + 1
+                agent.move('>')
+        finally:
+            # (also when a preemption raised out of the move after the level changed)
+            if agent.current_level().key() != level.key():
+                # coming back up, don't take it straight down again into whatever followed us
+                self._avoid_stairs_until[above] = agent.blstats.time + ARRIVAL_RETREAT_REST
+                self._stair_escape_arrival = (agent.current_level().key(), agent.blstats.time)
+                agent.log(f'STAIR_ESCAPE arrived on {agent.current_level().key()} depth {agent.blstats.depth}')
+            elif (agent.blstats.y, agent.blstats.x) == start[:2]:
                 self._retreat_blocked_until = agent.blstats.time + 15
 
     # ---------------------------------------------------------------- mines
