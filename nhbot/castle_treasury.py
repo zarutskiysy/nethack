@@ -529,8 +529,9 @@ def step(castle):
                                                                   else ''))
     bl = agent.blstats
     # the wand in the pack is named first: the HP and budget checks below used to end the detour with it unnamed
-    # (WISH_TELEPORT_ROUTE only acts on a known wand of wishing)
-    if not state.acquired:
+    # (WISH_TELEPORT_ROUTE only acts on a known wand of wishing). integ: gated by CASTLE_WISH_FIRST -- castle-wish
+    # shipped it always-on as a bug fix, but integ keeps v10c's order with every new flag off
+    if not state.acquired or not wish_first():
         if _low_hp(castle, state):
             return _finish(castle, state, f'HP {bl.hitpoints}/{bl.max_hitpoints}')
         if _over_budget(castle, state):

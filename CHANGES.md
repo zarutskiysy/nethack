@@ -82,7 +82,7 @@
   hostile on the way fought instead of ending the detour, no HP floor on the chest square (the cursed scare monster
   scroll on it is a melee refuge), the lock opened by key > blade > any forceable weapon (the pick-axe bashes) > a
   kick from the tower floor, and a walk on foot to the chest when the xorn form runs out inside a tower; FRONT_V3's
-  chest step uses a key first. Always on (bug fix): a wand taken from the chest is named (zapped) before the HP and
+  chest step uses a key first. With the flag on (integ: was always-on in castle-wish; gated so flag-off = v10c): a wand taken from the chest is named (zapped) before the HP and
   budget checks, which used to end the detour with it unnamed, out of WISH_TELEPORT_ROUTE's reach.
   `tests/test_castle_wish.py` (fakes): `python tests/test_castle_wish.py`.
 - **strong-castle (CASTLE_BASECAMP / CASTLE_FARM_THEN_ENTER / CASTLE_KIT_PICKUP, all off; `nhbot/castle_tune.py`,

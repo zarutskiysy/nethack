@@ -351,6 +351,8 @@ def test_flag_default_off():
     assert dive.front._tune_open() is False and dive.front._v3() is jf_config.FRONT_V3
     with flags(CASTLE_PASSTUNE=True):
         assert tune.active() is True
+    with flags(CASTLE_PASSTUNE=True, PASSTUNE_CRUSHER=True):
+        assert tune.active() is False   # integ: vk-castle's Crusher owns the front when both are on
 
 
 def test_feedback_is_music_c():

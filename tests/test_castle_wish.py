@@ -310,7 +310,11 @@ def test_wand_named_before_hp_check():
         with patched(ct, _identify_acquired=lambda c, s: called.append(1) or True), \
                 patched(castle_cross, wallwalker=lambda a: True):
             r = ct.step(castle)
-        assert r is True and called == [1], on
+        if on:
+            assert r is True and called == [1], on
+        else:
+            # integ: flag off keeps v10c's order -- the HP check ends the detour before the wand is named
+            assert called == [], (on, r, called)
 
 
 def test_refuge_ignores_hp():

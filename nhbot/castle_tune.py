@@ -436,6 +436,11 @@ class PassTune:
     def active(self):
         if not jf_config.CASTLE_PASSTUNE or self.done:
             return False
+        if getattr(jf_config, 'PASSTUNE_CRUSHER', False):
+            # integ: castle-wish's passtune lane and vk-castle's Crusher fire on the same trigger, each with its own
+            # Mastermind solver and bridge state, and fight over the bridge; with both switched on the Crusher
+            # (higher in the preempt chain) owns the castle front alone (research/integ.md)
+            return False
         front = self._front()
         if front is None or not front.on_castle():
             return False
