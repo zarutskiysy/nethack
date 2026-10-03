@@ -1,6 +1,6 @@
 {
   "schema": "nethackers.solution/v1",
-  "name": "zarutskiysy-v10c",
+  "name": "zarutskiysy-v11pub",
   "root": ".",
   "parents": [
     "github.com/zarutskiysy/nethack@14a3bbd871061d63bda57da6c82af91f46959d21",

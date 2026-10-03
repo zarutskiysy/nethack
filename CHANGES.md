@@ -13,6 +13,9 @@
   Cavemen on the Dlvl-1 grind (+0.073 +- 0.022, 120 pairs).
 - **v10c**: neutral human Wizards on pf_s25p8 instead of pf_vk_s25 (dev held-out: 0.252 vs 0.153 over 90 seeds; the
   verified tier agrees).
+- **v11pub** (public board only): per identity the best public-seed setup among v10c, v7, v9p2 and v4 (same nhbot
+  code; tools/mkpub.py), as explicit per-identity routes and configs. Public-seed selection overfits by design: for the
+  private/verified tier use v10c.
 - **eL1fe's fixes** (ported from eL1fe/nethacker@cfc3828, its `dag25` engine = this same base): the spell-direction fix
   (`Agent.cast` sent the compass string as keys: every aimed cast was wasted), force bolt for Wizards (from
   CleverShovel 0d1fb22: never into shops, never flying on into a pet), healing spells for any role that knows them,
