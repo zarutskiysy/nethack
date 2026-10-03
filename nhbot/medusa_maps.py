@@ -102,6 +102,14 @@ MAPS = {
 
 
 
+# medusa.des STAIR:(04,09),up on Medusa-2, in screen coordinates (map (y + YOFF, x + XOFF)): the '<' of her closed, unlit
+# arrival room, which the bot only sees from next to it (jf_config.MEDUSA2_CYCLE walks there before that). Map
+# coordinates are (x, y) in the .des file: x 4, y 9.
+STAIRS_UP = {'medusa-2': (9 + 1, 4 + XOFF)}
+# squares of that room to keep off on the way: its boulder (medusa.des OBJECT boulder (04,04)) and magic trap (03,12)
+AVOID = {'medusa-2': frozenset({(4 + 1, 4 + XOFF), (12 + 1, 3 + XOFF)})}
+
+
 def char_at(name, y, x):
     """The map character of variant `name` at screen (y, x); ' ' (solid rock) outside the map."""
     yoff, rows = MAPS[name]

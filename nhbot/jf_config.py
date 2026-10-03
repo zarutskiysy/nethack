@@ -1514,6 +1514,99 @@ DEEP_WAND_TEST = False
 # climbs), and after any climb off a stranded '<' the '>' above stays closed, so the dive digs back down.
 MEDUSA_STRANDED_REROLL = True
 MEDUSA_STRANDED_REROLLS = 6
+# MEDUSA2_CYCLE (off pending an A/B; research/medusa_v10.md): dive_logic's MEDUSA_HOLE_CYCLE on Medusa-2 only, and only
+# for the kits that lose there: no known wand of digging, not a dwarf, not lawful. On current code (v10b-identical
+# nhbot, 2540 deduplicated dev games) Medusa-2 passes 38% (79/208): lawfuls 18/20 (the titan, alignment +9, is usually
+# generated peaceful for them: makemon.c peace_minded), dwarves 12/13 (dig.c dig(): the effort doubles every turn),
+# known wand 25/27 -- and the remaining pick-only kits 39 of 164 (24%; 125 deaths, median 17 turns after landing,
+# 3 applies). The arrival room (medusa.des REGION (02,03,05,16), closed, non-diggable walls, unlit) holds an awake
+# titan that casts every move it doesn't melee (monmove.c dochug: undirected castmu within dist2 49; mcastu.c
+# choose_magic_spell: MGC_SUMMON_MONS for spellval 15-17 of rn2(m_lev), no cooldown at m_lev >= 10), so ~1 summon of
+# 1-2 nasties (wizard.c nasty: rnd(XL/3)) every ~5-10 turns while a pick-axe needs ~24 uninterrupted dig turns (pit at
+# effort 50, hole at 250 more; any attack stops the occupation before it runs). The room's '<' (medusa.des STAIR
+# (04,09) = screen (10, 6)) is at most 7 steps from any landing square, the titan has no M2_STALK, and stepping
+# into an existing hole falls 1 + Geom(1/4) levels (trap.c fall_through) -- a quarter of the plunges skip her level,
+# the rest land in the room again (TELEPORT_REGION (02,03,05,16) down). The '<' is taken from the fixed map while
+# the dark room hasn't shown it (medusa_maps.STAIRS_UP). (HOLE_CYCLE on every variant was rejected, mcb0/mcb1 -0.0147:
+# it cost passes on medusa-1/-4; on medusa-2 pick-only kits it went 2 -> 4 of 9, cycling in only 2 of them.)
+MEDUSA2_CYCLE = False
+MEDUSA2_CYCLE_MAX = 12              # climbs off Medusa-2
+MEDUSA2_CYCLE_HOLE_STEPS = 40       # BFS steps up there we walk to our old hole (else the dive digs a new one)
+# ELBERETH_ATTACKED_REWRITE (off pending an A/B; research/medusa_v10.md): on Medusa's level, being attacked since our
+# last Elbereth on this square -- a pick-axe apply cut short ('You stop digging'), or a melee attack message, hit or
+# miss -- is proof the engraving doesn't hold that monster, so the next action rewrites it instead of re-applying the
+# pick or waiting, past the per-square caps (ELBERETH_TRIES_ESCAPE 4, ELBERETH_TRIES_BLIND 6) and the blind rule
+# 'only after being hurt'. Why: allmain.c runs the dig occupation only at our next move, and every attack in between
+# (mhitu.c hitmu, and missmu for a miss) calls stop_occupation, so an apply under attack makes no progress at all; a
+# rewrite stops the attacks 72% of the time sighted (engrave.c: 1 letter in 25 garbles in dust) and 34% blind (1 in 11
+# more), and a sighted one is read back. In the last 60 messages of the current-code Medusa deaths there were 383
+# interrupted applies (200 of them right after another interrupted apply) against 565 that weren't; the misses
+# never counted as 'hurt', and long fights used up the caps. Monsters that ignore Elbereth (@, minotaurs, minions,
+# blinded ones) keep their old handling: a sighted intact read-back is never rewritten.
+ELBERETH_ATTACKED_REWRITE = False
+ELBERETH_ATTACKED_MAX = 10          # such extra writes per square (and dig phase)
+# --- ported from vkurenkov/nethack@4921bc3 (research/competitor_scan2.md N1, research/medusa_v10.md): medusa_reentry.py.
+# Defaults OFF here (theirs: on). The evidence quoted below is THEIR harness (XL8 HP80 AC6 pick-axe), not our dev games.
+# MEDUSA_REENTRY + MEDUSA_STANDOFF (both off; RECOMMENDED ON TOGETHER, nothing else is needed): Medusa-3 -- the raven island,
+# where the arrival region and the '<' are one 18-square island with a moat neighbour on every square, 30 ravens and a couple
+# of nymphs -- is a flood lottery for a digger (dig.c fillholetyp: a hole is dry with 1/(k+1)^2, 1/4 at the best squares, and
+# every flood is a drowning risk): the base passes 44% of the harness games (101/229 on five secrets). This policy never digs
+# there. It climbs the '<' (ravens have no M2_STALK, they never follow) and goes back down through the hole we dug above:
+# trap.c fall_through() (walking onto a known hole, or '>' on it) drops one level further with probability 1/4 (newlevel++
+# while !rn2(4)), unlike the FIRST fall through a freshly dug hole (dig.c digactualhole: exactly one level, ledger F306). So
+# every re-entry is a 1-in-4 skip of Medusa's level outright, else a fresh random landing on the island and another climb. The
+# first climb finds the hole we fell through only if the known map reaches it; otherwise the dive digs a new hole beside the
+# '>' (the stairs we came up by are avoided), one step from the '>' for every later entry. EVIDENCE (harness dive-medusa, XL8
+# HP80 AC6 pick-axe, Medusa-3 seeds, paired by seed against 008ef20; Medusa-3 is 7 of the first 45 real base games): the final
+# tree on UNTOUCHED secrets jf752 29/44 (66%) vs base 13/44 (30%), +18 -2, and jf753 26/35 (74%) vs 17/35 (49%), +12 -3; pooled
+# 55/79 (69.6%) vs 30/79 (38.0%), exact sign p < 0.0001, paired difference +31.6 points (95% CI +18.7 to +44.6). On the
+# development secrets jf750+jf751 (used to tune): 74/109 (67.9%) vs 52/109 (47.7%), +39 -17, p 0.005. COSTS: a median 340 turns
+# a Medusa-3 game (base 29), ~330 of them on the island and ~100 above it; 9% of the games die within a few turns of reaching
+# the level above (an awake pack at its '>': elf-lords, soldiers, vampires), and the pick-axe is stolen by a nymph in ~3% of
+# them (a stolen digging tool ends the plan). MEDUSA_REENTRY_MAX climbs a game; the '<' must be within MEDUSA_REENTRY_STEPS BFS
+# steps; the level above is rested on to MEDUSA_REENTRY_REST of max HP (at most MEDUSA_REENTRY_REST_MAX turns, and sight is
+# waited for, MEDUSA_REENTRY_BLIND_MAX) before an entry; a recorded hole farther than MEDUSA_REENTRY_HOLE_STEPS steps is not
+# walked to; the layer eats the pack's food itself when Hungry (it loops above the dive's eaters) and gives way when Weak with
+# nothing to eat. MEDUSA_REENTRY_M4 also uses it on Medusa-4's wet islets (not measured; off).
+MEDUSA_REENTRY = False
+MEDUSA_REENTRY_FLOODS = 0       # climb only after this many floods on the island (0: at once); lower than that the dive digs
+MEDUSA_REENTRY_HP = 0.5         # ...or below this share of max HP (climb whatever the flood count)
+MEDUSA_REENTRY_SCARE = True     # Elbereth before the walk to the '<' when two ravens are next to us and it is 2+ steps away
+MEDUSA_REENTRY_LOOP = 400       # actions the layer takes in a row before it hands control back (see reentry_strategy)
+MEDUSA_REENTRY_MAX = 10
+MEDUSA_REENTRY_STEPS = 8
+MEDUSA_REENTRY_COMMIT = 3        # a walk this near the '<' is finished, not held, when the window closes
+MEDUSA_REENTRY_REST = 0.9
+MEDUSA_REENTRY_REST_MAX = 400
+MEDUSA_REENTRY_TOTAL = 2500     # the standoff and the cycle give up this many turns after the first landing on Medusa's level
+MEDUSA_REENTRY_BLIND_MAX = 60   # turns waited above for sight to return before the hole is entered blind
+MEDUSA_REENTRY_HOLE_STEPS = 40
+MEDUSA_REENTRY_M4 = False
+# MEDUSA_STANDOFF (off; medusa_reentry.py; the walk half of the policy above): on Medusa-3's island hold an intact Elbereth (read
+# back every step while we can see) and let the walk to the '<' start only when a WINDOW is open: sight, HP >= MEDUSA_STANDOFF_HP
+# of max and no hostile within max(MEDUSA_STANDOFF_WINDOW, steps to the '<' + 2) squares (hostiles are counted within
+# MEDUSA_STANDOFF_RADIUS); at most MEDUSA_STANDOFF_MAX turns a landing (MEDUSA_STANDOFF_MAX_OK once sighted with the HP),
+# MEDUSA_STANDOFF_TRIES engravings a square. Why: the island's ravens do not thin out (harness: 200 turns on Elbereth, full HP at
+# the end, 2-9 ravens within 9 squares throughout -- a scared raven flees rnd(10) turns, one time in seven rnd(100) (monmove.c
+# distfleeck), but the level holds 30 of them), the hold itself is safe (an intact Elbereth: no raven bit in 200 turns), and a
+# walk begun at a window loses 2.2 HP on average against 8.0 HP and 4x the turns for one begun at the cap. What kills is the
+# landing next to the flock: a raven's claw (AD_BLND) hits AC 6 about 95% of the time, so one round of contact blinds, and a
+# blind dust Elbereth is written whole 34% of the time (engrave.c: 1 letter in 11 garbled when blind on top of 1 in 25) against
+# 72% sighted. The fixes that mattered, each from a death pattern of the harness logs (F383): the walk goes round the monsters
+# (MEDUSA_REENTRY_AROUND; the old step hit the raven standing on the path, nine turns running, 69 -> 16 HP), a blind hold writes
+# again only when hurt (MEDUSA_STANDOFF_REFRESH 0; a refresh every 30 turns replaced a standing Elbereth by one that holds 1 time
+# in 3), and the give-up 'hurt on an intact Elbereth' no longer fires on the hit taken in the turn that wrote it
+# (MEDUSA_STANDOFF_HURT_STRICT). Tried and NOT adopted: a hold cap of 60 turns plus rest to 70% (wn10a, jf750 33/52 vs 37/52).
+MEDUSA_STANDOFF = False
+MEDUSA_STANDOFF_MAX = 250       # turns a landing is held while we are blind or below MEDUSA_STANDOFF_HP (the hold is the rest)
+MEDUSA_STANDOFF_MAX_OK = 250    # ...and once we see and have the HP: the walk starts at the latest then, window or not
+MEDUSA_STANDOFF_REFRESH = 0     # blind: write the Elbereth again after this many turns without a hurt (0: only when hurt; was 30)
+MEDUSA_REENTRY_AROUND = True    # the walk to the '<' goes round the monsters (an Elbereth when the way is taken) instead of hitting them
+MEDUSA_STANDOFF_HURT_STRICT = True   # "hurt on an intact Elbereth" (the hold gives up) only when it stood intact at the observation before too
+MEDUSA_STANDOFF_RADIUS = 12
+MEDUSA_STANDOFF_WINDOW = 4
+MEDUSA_STANDOFF_HP = 0.7
+MEDUSA_STANDOFF_TRIES = 6
 
 # ---------------------------------------------------------------------------------------------------------------
 # dive-audit lane (2026-09-30; ledger F092): a death-by-death review of cand-g's 53 fresh deaths at max depth 5-20
