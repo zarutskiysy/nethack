@@ -1750,7 +1750,7 @@ MEDUSA2_TITAN_LAWFUL = False        # a lawful hero cycles too once the titan wa
 # interrupted applies (200 of them right after another interrupted apply) against 565 that weren't; the misses
 # never counted as 'hurt', and long fights used up the caps. Monsters that ignore Elbereth (@, minotaurs, minions,
 # blinded ones) keep their old handling: a sighted intact read-back is never rewritten.
-ELBERETH_ATTACKED_REWRITE = False
+ELBERETH_ATTACKED_REWRITE = True   # v10d: dev replay +0.0074 +- 0.0023 over 419 Medusa seeds (with REENTRY+STANDOFF)
 ELBERETH_ATTACKED_MAX = 10          # such extra writes per square (and dig phase)
 # --- ported from vkurenkov/nethack@4921bc3 (research/competitor_scan2.md N1, research/medusa_v10.md): medusa_reentry.py.
 # Defaults OFF here (theirs: on). The evidence quoted below is THEIR harness (XL8 HP80 AC6 pick-axe), not our dev games.
@@ -1775,7 +1775,7 @@ ELBERETH_ATTACKED_MAX = 10          # such extra writes per square (and dig phas
 # waited for, MEDUSA_REENTRY_BLIND_MAX) before an entry; a recorded hole farther than MEDUSA_REENTRY_HOLE_STEPS steps is not
 # walked to; the layer eats the pack's food itself when Hungry (it loops above the dive's eaters) and gives way when Weak with
 # nothing to eat. MEDUSA_REENTRY_M4 also uses it on Medusa-4's wet islets (not measured; off).
-MEDUSA_REENTRY = False
+MEDUSA_REENTRY = True   # v10d
 MEDUSA_REENTRY_FLOODS = 0       # climb only after this many floods on the island (0: at once); lower than that the dive digs
 MEDUSA_REENTRY_HP = 0.5         # ...or below this share of max HP (climb whatever the flood count)
 MEDUSA_REENTRY_SCARE = True     # Elbereth before the walk to the '<' when two ravens are next to us and it is 2+ steps away
@@ -1804,7 +1804,7 @@ MEDUSA_REENTRY_M4 = False
 # again only when hurt (MEDUSA_STANDOFF_REFRESH 0; a refresh every 30 turns replaced a standing Elbereth by one that holds 1 time
 # in 3), and the give-up 'hurt on an intact Elbereth' no longer fires on the hit taken in the turn that wrote it
 # (MEDUSA_STANDOFF_HURT_STRICT). Tried and NOT adopted: a hold cap of 60 turns plus rest to 70% (wn10a, jf750 33/52 vs 37/52).
-MEDUSA_STANDOFF = False
+MEDUSA_STANDOFF = True   # v10d
 MEDUSA_STANDOFF_MAX = 250       # turns a landing is held while we are blind or below MEDUSA_STANDOFF_HP (the hold is the rest)
 MEDUSA_STANDOFF_MAX_OK = 250    # ...and once we see and have the HP: the walk starts at the latest then, window or not
 MEDUSA_STANDOFF_REFRESH = 0     # blind: write the Elbereth again after this many turns without a hurt (0: only when hurt; was 30)
