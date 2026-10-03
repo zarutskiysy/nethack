@@ -1038,6 +1038,15 @@ class DiveLogic:
         self._medusa_stranded = None       # MEDUSA_STRANDED_REROLL: (level key, (y, x)) last seen stranded there
         self._medusa_cycles = 0            # MEDUSA_HOLE_CYCLE climbs off Medusa's level
         self._dug_holes = {}               # level key -> (y, x) of the last hole we fell through there
+        from .medusa_reentry import Reentry
+        self.reentry = Reentry(self)       # medusa_reentry.py (jf_config.MEDUSA_REENTRY / MEDUSA_STANDOFF)
+        self._hurt_on_elbereth_strict = -1  # ...and the Elbereth was intact at the observation before too (MEDUSA_STANDOFF)
+        self._elbereth_intact_before = False
+        self._titan_levels = set()         # MEDUSA2_CYCLE: Medusa's level keys recognised by their titan (Medusa-2)
+        self._m2_stair_bad = set()         # MEDUSA2_CYCLE: level keys where the map's '<' wasn't there
+        self._dig_stopped = {}             # ELBERETH_ATTACKED_REWRITE: Elbereth spot -> turn an apply there was cut short
+        self._attacked_turn = -1           # ELBERETH_ATTACKED_REWRITE: last turn a melee attack on us was reported
+        self._attacked_writes = {}         # ELBERETH_ATTACKED_REWRITE: Elbereth spot -> extra writes made past the caps
         self._dig_walk_blocked_until = -1  # turn until which DIG_ESCAPE doesn't walk to a dig square
         self._medusa_reroll_blocked_until = -1
         self._raven_levels = set()         # Medusa's level key once ravens were seen there (Medusa-3)
@@ -1077,6 +1086,11 @@ class DiveLogic:
                     (agent.inventory.engraving_below_me or '').lower() == 'elbereth':
                 # hurt while standing on an intact Elbereth: whatever did it ignores the engraving
                 self._hurt_on_elbereth = turn
+                if jf_config.MEDUSA_STANDOFF and self._elbereth_intact_before:
+                    # (MEDUSA_STANDOFF_HURT_STRICT: ...and it stood intact at the observation before as well)
+                    self._hurt_on_elbereth_strict = turn
+            if jf_config.MEDUSA_STANDOFF:
+                self._elbereth_intact_before = (agent.inventory.engraving_below_me or '').lower() == 'elbereth'
             self._hp_history.append((turn, agent.blstats.hitpoints))
             self._hp_history = self._hp_history[-12:]
         if self._pit_at is not None and self._pit_at != (key, (agent.blstats.y, agent.blstats.x)):
@@ -1094,17 +1108,22 @@ class DiveLogic:
             if utils.isin(agent.glyphs, [DiveLogic.TITAN]).any() and \
                     not (jf_config.MEDUSA_TITAN_MSG and key in self._door_heard):
                 self.medusa_level = key   # Medusa-2's dark landing room (see MEDUSA_TITAN_DETECT)
+                self._titan_levels.add(key)
                 agent.log(f'DIVE Medusa level detected: {key} depth {agent.blstats.depth} (Medusa-2: titan)')
         if MEDUSA_TITAN_DETECT and jf_config.MEDUSA_TITAN_MSG and self._titan_named() and \
                 self.medusa_level is None and level.dungeon_number == Level.DUNGEONS_OF_DOOM and \
                 agent.blstats.depth >= MEDUSA_MIN_DEPTH and key not in self.undiggable and key not in self._door_heard:
             self.medusa_level = key   # (see jf_config.MEDUSA_TITAN_MSG)
+            self._titan_levels.add(key)
             agent.log(f'DIVE Medusa level detected: {key} depth {agent.blstats.depth} (Medusa-2: titan named)')
         if key != self._last_level_key:
             self._last_level_key = key
             self._raven_arrival_turn = turn   # RAVEN_CYCLE: floods count per visit
         if key == self.medusa_level and 'fills with water' in agent.message:
             self._raven_flood_turn = turn
+        if jf_config.ELBERETH_ATTACKED_REWRITE and key == self.medusa_level and \
+                self._ATTACK_ON_US.search(agent.message or ''):
+            self._attacked_turn = turn   # (see jf_config.ELBERETH_ATTACKED_REWRITE)
         if key == self.medusa_level and key not in self._raven_levels:
             if DiveLogic.RAVEN is None:
                 DiveLogic.RAVEN = MON.from_name('raven')
@@ -1224,6 +1243,8 @@ class DiveLogic:
                 if old_level is not None:
                     old_level.objects[prev[1]] = SS.S_trap_door
                     agent.log(f'DIVE fell through a trap door at {prev[1]} on {prev[0]}; remembered')
+                    if jf_config.MEDUSA_REENTRY:
+                        self.reentry.note_fall(prev[0], prev[1], key)   # (the hole stays: a later entry may skip a level)
                 self._dug_holes[prev[0]] = (int(prev[1][0]), int(prev[1][1]))   # MEDUSA_HOLE_CYCLE
         if jf_config.MEDUSA_STRANDED_REROLL and prev is not None and prev[0] != key and \
                 self._medusa_stranded is not None and prev[0] == self._medusa_stranded[0] and \
@@ -2084,6 +2105,10 @@ class DiveLogic:
     # mthrowu.c thitu: 'You are hit by <missile>'; buzz()/mbhitm: 'The bolt of lightning hits you!', 'The wand
     # hits you!'. Melee hits read 'The <monster> hits!' (no 'you').
     _RANGED_HIT = re.compile(r"You are hit by |\bhits you[!.]")
+    # ELBERETH_ATTACKED_REWRITE: a monster's melee attack on us, hit or miss (mhitu.c hitmsg/missmu: 'The raven bites!',
+    # 'It just misses!'); a monster attacking another monster ends with its target and a '.', never a bare '!'
+    _ATTACK_ON_US = re.compile(r"\b(?:The|It)\b[^.!?]*? (?:just misses|misses|bites|hits|claws|stings|butts|kicks|"
+                               r"touches you|grabs you|blinds you|thrusts [a-z ]+|swings [a-z ]+)!")
 
     def shot_recently(self):
         """RANGED_ON_ELB: a missile, wand or ray hit us within RANGED_BREAK_TURNS. Elbereth stops only melee
@@ -2592,6 +2617,39 @@ class DiveLogic:
             return False
         key = self.agent.current_level().key()
         return int(key[0]) == int(self.medusa_level[0]) and int(key[1]) + 1 == int(self.medusa_level[1])
+
+    @Strategy.wrap
+    def reentry_strategy(self):
+        """MEDUSA_REENTRY (medusa_reentry.py, ported from vkurenkov 4921bc3): on Medusa-3's island climb the '<', rest above
+        and step into the hole we dug there again -- a 1 in 4 chance each time to skip Medusa's level (trap.c
+        fall_through); MEDUSA_STANDOFF holds an Elbereth on the island until a window opens. A preempt layer beside
+        raven_cycle. Keeps acting while the plan applies (one action back would let a lower strategy's step leak in)."""
+        action = self._reentry_plan()
+        if action is None:
+            yield False
+        yield True
+        agent = self.agent
+        for _ in range(jf_config.MEDUSA_REENTRY_LOOP):
+            steps = agent.step_count
+            self.reentry.act(action)
+            if agent.step_count == steps:
+                return
+            action = self._reentry_plan()
+            if action is None:
+                return
+
+    def _reentry_plan(self):
+        if not (jf_config.MEDUSA_REENTRY or jf_config.MEDUSA_STANDOFF):
+            return None
+        try:
+            return self.reentry.plan()
+        except AgentPanic:
+            raise
+        except Exception as e:   # (a bot exception scores 0: log it and leave the layer out)
+            if not getattr(self, '_reentry_err_logged', False):
+                self._reentry_err_logged = True
+                self.agent.log(f'REENTRY plan failed: {e!r}')
+            return None
 
     @Strategy.wrap
     def raven_cycle(self):
@@ -4088,6 +4146,10 @@ class DiveLogic:
         spot = (agent.current_level().key(), bl.y, bl.x, 'blind')
         tries = self.__dict__.setdefault('_elbereth_tries', {})
         last = self.__dict__.setdefault('_engrave_turn', {}).get(spot)
+        if self._attacked_rewrite_due(spot):
+            # (jf_config.ELBERETH_ATTACKED_REWRITE) a miss is as sure a sign as a hit that it didn't take
+            self._attacked_writes[spot] = self._attacked_writes.get(spot, 0) + 1
+            return ('blind_engrave', spot)
         if last is None or self._hurt_since(last):
             if tries.get(spot, 0) >= MEDUSA_BLIND_TRIES:
                 return None
@@ -4680,16 +4742,85 @@ class DiveLogic:
         key = self.agent.current_level().key()
         return int(key[0]) == int(self.medusa_level[0]) and int(key[1]) + 1 == int(self.medusa_level[1])
 
+    def _medusa2_cycle_kit(self):
+        """jf_config.MEDUSA2_CYCLE: Medusa's level is Medusa-2 (recognised by its titan) and our kit is one that loses
+        there -- no known wand of digging, not a dwarf, not lawful (see the flag)."""
+        if self.medusa_level is None or not any(int(k[0]) == int(self.medusa_level[0]) and
+                                                int(k[1]) == int(self.medusa_level[1]) for k in self._titan_levels):
+            return False
+        ch = self.agent.character
+        if ch.race == Character.DWARF or ch.alignment == Character.LAWFUL:
+            return False
+        return self._dig_wand() is None
+
+    def _cycle_on(self):
+        """MEDUSA_HOLE_CYCLE everywhere, or jf_config.MEDUSA2_CYCLE's Medusa-2 subset of it."""
+        return MEDUSA_HOLE_CYCLE or (jf_config.MEDUSA2_CYCLE and self._medusa2_cycle_kit())
+
+    def _cycle_max(self):
+        return MEDUSA_HOLE_CYCLE_MAX if MEDUSA_HOLE_CYCLE else jf_config.MEDUSA2_CYCLE_MAX
+
+    def _cycle_hole_steps(self):
+        # MEDUSA2_CYCLE: a walk to the old hole (a 1-in-4 skip) beats a new pick-axe hole (~24 dig turns, and its own
+        # fall drops exactly one level: dig.c digactualhole -- straight back into the titan's room)
+        return MEDUSA_HOLE_CYCLE_HOLE_STEPS if MEDUSA_HOLE_CYCLE else jf_config.MEDUSA2_CYCLE_HOLE_STEPS
+
+    def _m2_map_stair(self, level):
+        """MEDUSA2_CYCLE: Medusa-2's '<' from the fixed map (medusa_maps.STAIRS_UP), or None (another variant, or the
+        map's square turned out not to hold it)."""
+        if not jf_config.MEDUSA2_CYCLE or MEDUSA_HOLE_CYCLE or not self._medusa2_cycle_kit() or \
+                level.key() in self._m2_stair_bad:
+            return None
+        from . import medusa_maps
+        return medusa_maps.STAIRS_UP['medusa-2']
+
+    def _m2_static_step(self, target):
+        """MEDUSA2_CYCLE: the next square toward `target` by Medusa-2's fixed map (its unlit room shows only what is
+        next to us), avoiding its boulder and magic trap and squares we know can't be walked; None if no step helps."""
+        from . import medusa_maps
+        agent = self.agent
+        level = agent.current_level()
+        h, w = level.objects.shape
+        avoid = medusa_maps.AVOID['medusa-2']
+
+        def ok(y, x):
+            if not (0 <= y < h and 0 <= x < w) or (y, x) in avoid:
+                return False
+            if (y, x) != target and medusa_maps.char_at('medusa-2', y, x) != '.':
+                return False
+            return level.objects[y, x] == -1 or bool(level.walkable[y, x]) or (y, x) == target
+
+        dist = {target: 0}
+        frontier = [target]
+        while frontier:
+            nxt = []
+            for y, x in frontier:
+                for dy in (-1, 0, 1):
+                    for dx in (-1, 0, 1):
+                        p = (y + dy, x + dx)
+                        if (dy or dx) and p not in dist and ok(*p):
+                            dist[p] = dist[(y, x)] + 1
+                            nxt.append(p)
+            frontier = nxt
+        here = (int(agent.blstats.y), int(agent.blstats.x))
+        steps = [(dist[p], (p[0] - target[0]) ** 2 + (p[1] - target[1]) ** 2, p)
+                 for p in ((here[0] + dy, here[1] + dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1))
+                 if p != here and p in dist]
+        if not steps or min(steps)[0] >= dist.get(here, 10 ** 9):
+            return None
+        return min(steps)[2]   # (ties: the straighter step)
+
     def _medusa_cycle_action(self):
         """MEDUSA_HOLE_CYCLE (see there): ('cycle_up', '<') on her level, ('plunge', hole) / ('hole_walk', square) /
         ('cycle_rest', None) on the level above once we have climbed off hers, else None."""
-        if not (MEDUSA_HOLE_CYCLE and DIG_ESCAPE and self.diving) or self.medusa_level is None or self.levitating():
+        if not (DIG_ESCAPE and self.diving) or self.medusa_level is None or self.levitating() or \
+                not self._cycle_on():
             return None
         agent = self.agent
         bl = agent.blstats
         level = agent.current_level()
         if self.on_medusa_level():
-            if self._medusa_cycles >= MEDUSA_HOLE_CYCLE_MAX or self._in_own_pit() or \
+            if self._medusa_cycles >= self._cycle_max() or self._in_own_pit() or \
                     bl.time < self._medusa_reroll_blocked_until:
                 return None
             above = (self.medusa_level[0], self.medusa_level[1] - 1)
@@ -4702,6 +4833,11 @@ class DiveLogic:
             ups |= {(int(p[0]), int(p[1])) for p, dest in level.stair_destination.items()
                     if dest[0][0] == level.dungeon_number and dest[0][1] < level.level_number}
             reachable = [(dis[p], p) for p in ups if 0 <= dis[p] <= MEDUSA_HOLE_CYCLE_STEPS]
+            if not reachable:
+                # MEDUSA2_CYCLE: her dark room shows its '<' only from next to it -- the fixed map knows where it is
+                m2 = self._m2_map_stair(level)
+                if m2 is not None and max(abs(m2[0] - bl.y), abs(m2[1] - bl.x)) <= MEDUSA_HOLE_CYCLE_STEPS:
+                    return ('cycle_up', m2)
             return ('cycle_up', min(reachable)[1]) if reachable else None
         if self._medusa_cycles == 0 or not self._above_medusa() or bl.time < self._medusa_reroll_blocked_until:
             return None
@@ -4712,7 +4848,7 @@ class DiveLogic:
                 dis = agent.bfs()
                 near = [(dis[hy + dy, hx + dx], (hy + dy, hx + dx)) for dy in (-1, 0, 1) for dx in (-1, 0, 1)
                         if (dy or dx) and 0 <= hy + dy < dis.shape[0] and 0 <= hx + dx < dis.shape[1] and
-                        0 <= dis[hy + dy, hx + dx] <= MEDUSA_HOLE_CYCLE_HOLE_STEPS]
+                        0 <= dis[hy + dy, hx + dx] <= self._cycle_hole_steps()]
                 if near:
                     return ('hole_walk', min(near)[1])
                 hole = None   # too far: the dive digs a new one
@@ -4726,6 +4862,7 @@ class DiveLogic:
 
     def _medusa_cycle_climb(self, up):
         agent = self.agent
+        level = agent.current_level()
         if (agent.blstats.y, agent.blstats.x) != up:
             if getattr(self, '_cycle_walk_logged', None) != (self._medusa_cycles, up):
                 self._cycle_walk_logged = (self._medusa_cycles, up)
@@ -4733,9 +4870,30 @@ class DiveLogic:
                           f'hp {agent.blstats.hitpoints}/{agent.blstats.max_hitpoints})')
             start = (agent.blstats.y, agent.blstats.x)
             turn = agent.blstats.time
-            self._raven_step_toward(up)
+            if agent.bfs()[up] == -1 and self._m2_map_stair(level) == up:
+                # (MEDUSA2_CYCLE) the map's '<', not in view yet: one step by the fixed map
+                step = self._m2_static_step(up)
+                if step is None:
+                    self._medusa_reroll_blocked_until = turn + 3
+                    return
+                try:
+                    agent.move(*step)
+                except AgentPanic as e:
+                    if 'Monster on a next tile' not in str(e) or (agent.blstats.y, agent.blstats.x) != start:
+                        raise
+                    agent.log(f'MEDUSA2_CYCLE: hitting the monster in the way at {step}')
+                    agent.step(A.Command.FIGHT)
+                    agent.direction(*step)
+            else:
+                self._raven_step_toward(up)
             if (agent.blstats.y, agent.blstats.x) == start and agent.blstats.time == turn:
                 self._medusa_reroll_blocked_until = turn + 3   # no move and no turn: let the dig plan act
+            return
+        if level.objects[up] not in G.STAIR_UP and 'staircase up here' not in (agent.message or '') and \
+                self._m2_map_stair(level) == up:
+            # (MEDUSA2_CYCLE) the fixed map's '<' isn't here after all: back to the usual dig on this level
+            agent.log(f'MEDUSA2_CYCLE: no up staircase at the map square {up}')
+            self._m2_stair_bad.add(level.key())
             return
         key = agent.current_level().key()
         agent.log(f'MEDUSA_HOLE_CYCLE: climbing off her level (climb {self._medusa_cycles + 1})')
@@ -6364,6 +6522,21 @@ class DiveLogic:
         agent.engrave('Elbereth')
         return True
 
+    def _attacked_rewrite_due(self, spot):
+        """jf_config.ELBERETH_ATTACKED_REWRITE: since our last Elbereth on `spot` (an _elbereth_tries key) an apply
+        there was cut short or a monster attacked us in melee, and the extra writes on it aren't used up."""
+        if not (jf_config.ELBERETH_ATTACKED_REWRITE and self.on_medusa_level()):
+            return False
+        if self._attacked_writes.get(spot, 0) >= jf_config.ELBERETH_ATTACKED_MAX:
+            return False
+        last = self.__dict__.setdefault('_engrave_turn', {}).get(spot)
+        if last is None:
+            return False   # nothing written here yet: the usual rules write the first one
+        # (the blind hold's spot ends in 'blind', the dig phases' in whether we stand in our pit)
+        phases = (False, True) if spot[3] == 'blind' else (spot[3],)
+        stopped = max((self._dig_stopped.get(spot[:3] + (p,), -1) for p in phases), default=-1)
+        return stopped > last or self._attacked_turn > last
+
     def _elbereth_before_digging_escape(self):
         """DIG_ESCAPE's engraving before a dig step: against every monster whose melee Elbereth stops (breathers
         and casters included), always on Medusa's level, capped per square and dig phase (the pit erases it).
@@ -6399,7 +6572,10 @@ class DiveLogic:
         if not near and not (ELBERETH_ALWAYS or self.on_medusa_level() or bl.hunger_state >= Hunger.WEAK or
                              rewrite):
             return False
-        if blind:
+        attacked = self._attacked_rewrite_due(spot)   # (jf_config.ELBERETH_ATTACKED_REWRITE) past the caps below
+        if attacked:
+            self._attacked_writes[spot] = self._attacked_writes.get(spot, 0) + 1
+        elif blind:
             # can't read it back: the only sign it didn't take (a blind dust Elbereth keeps all 8 letters ~1 time
             # in 3) is being hurt since we wrote it -- then write it again. Digging under constant attack makes
             # no progress at all: every hit stops the occupation before its next turn (mhitu stop_occupation),
@@ -6550,6 +6726,12 @@ class DiveLogic:
                         return   # the faint's wipes: the next call writes it again first (_elbereth_before_digging)
                     continue
             break
+        if jf_config.ELBERETH_ATTACKED_REWRITE and prompted and 'You stop digging' in msg and \
+                'dig a pit in the' not in msg and key == self.medusa_level and \
+                not any(s in msg for s in ('You can hear again', 'You regain consciousness', 'You faint')):
+            # (see jf_config.ELBERETH_ATTACKED_REWRITE) cut short: an attack, or something next to us that our
+            # Elbereth doesn't hold (allmain.c monster_nearby)
+            self._dig_stopped[(key, spot[0], spot[1], self._in_own_pit())] = agent.blstats.time
         if prompted and 'dig a pit in the' in msg:
             self._pit_at = (key, spot)
         if 'hole fills with' in msg and key == self.medusa_level:

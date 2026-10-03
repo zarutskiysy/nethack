@@ -1087,6 +1087,9 @@ class GlobalLogic:
                 self.dive.elbereth_rest().condition(lambda: self.dive.diving or jf_config.SURVIVAL_IN_TOUR),
             ])
             .preempt(self.agent, [
+                # medusa lane (MEDUSA_REENTRY, medusa_reentry.py, from vkurenkov 4921bc3): Medusa-3's island -> up the '<',
+                # rest, and back in through the hole we dug above (one entry in four skips her level)
+                self.dive.reentry_strategy().condition(lambda: jf_config.MEDUSA_REENTRY or jf_config.MEDUSA_STANDOFF),
                 # Medusa-3 only (RAVEN_CYCLE): off the raven island to heal, back for a fresh dig
                 self.dive.raven_cycle(),
                 self.dive.retreat_upstairs().condition(lambda: self.dive.diving or jf_config.SURVIVAL_IN_TOUR),
