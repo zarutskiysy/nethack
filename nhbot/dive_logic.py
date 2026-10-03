@@ -1779,6 +1779,8 @@ class DiveLogic:
             return
 
         if dnum == Level.QUEST:
+            if jf_config.QUEST_DIVE and self.quest_dive_step():
+                return
             self._task('leave quest')
             return self.leave_quest()
 
@@ -8963,6 +8965,9 @@ class DiveLogic:
         """Home 1 is banked on arrival; walk back through the portal and keep diving."""
         agent = self.agent
         level = agent.current_level()
+        if level.level_number > 1:
+            # below the home level (QUEST_DIVE): climb the '<' back to it first
+            return self.return_to_main_dungeon()
         portals = [(y, x) for y, x in zip(*utils.isin(level.objects, PORTAL).nonzero())]
         if not portals and self.quest_arrival is not None:
             portals = [self.quest_arrival]
@@ -8986,6 +8991,96 @@ class DiveLogic:
             agent.go_to(y, x, stop_one_before=True)
             return
         self.step_onto(y, x, 'magic portal')
+
+    # ----------------------------------------------------------- quest dive
+
+    QUEST_LEADERS = ('Lord Carnarvon', 'Pelias', 'Shaman Karnov', 'Hippocrates', 'King Arthur', 'Grand Master',
+                     'Arch Priest', 'Orion', 'Master of Thieves', 'Lord Sato', 'Twoflower', 'Norn',
+                     'Neferet the Green')
+    _LEADER_GLYPHS = None
+
+    def quest_dive_step(self):
+        """QUEST_DIVE: one step of the descent from the Quest home to Home QUEST_DIVE_DEPTH. False hands the
+        level back to leave_quest (which climbs out); once given up the descent never restarts."""
+        agent = self.agent
+        level = agent.current_level()
+        bl = agent.blstats
+        st = self.__dict__.setdefault('_qdive', {'done': False, 'start': None, 'leader': False,
+                                                 'chats': 0, 'tries': {}})
+        if st['done']:
+            return False
+        msg = agent.message or ''
+        here = level.level_number
+        reason = None
+        if 'prevents you from descending' in msg:
+            reason = 'barred by the mysterious force (no quest assignment)'
+        elif bl.experience_level < jf_config.QUEST_DIVE_MIN_XL:
+            reason = f'XL {bl.experience_level} < {jf_config.QUEST_DIVE_MIN_XL}'
+        elif here >= jf_config.QUEST_DIVE_DEPTH:
+            reason = f'Home {here} banked'
+        elif bl.hitpoints < jf_config.QUEST_DIVE_MIN_HP * bl.max_hitpoints:
+            reason = f'hurt ({bl.hitpoints}/{bl.max_hitpoints}) on Home {here}'
+        elif st['start'] is not None and bl.time - st['start'] > jf_config.QUEST_DIVE_TURNS:
+            reason = f'out of budget on Home {here}'
+        elif st['tries'].get(here, 0) >= 3:
+            reason = f"the '>' on Home {here} did not take us down"
+        if reason is not None:
+            st['done'] = True
+            agent.log(f'QUEST dive over: {reason}')
+            return False
+        if st['start'] is None:
+            st['start'] = bl.time
+            agent.log(f'QUEST dive starts on Home {here} (XL {bl.experience_level}, turn {bl.time})')
+
+        if here == 1 and not st['leader'] and self._quest_meet_leader(st):
+            return True
+
+        downs = [(int(y), int(x)) for y, x in zip(*utils.isin(level.objects, G.STAIR_DOWN).nonzero())]
+        self._task(f'quest dive (Home {here})')
+        if (bl.y, bl.x) in downs:
+            if self.rest_if_hurt():
+                return True
+            st['tries'][here] = st['tries'].get(here, 0) + 1
+            agent.log(f'QUEST going down from Home {here}')
+            agent.move('>')
+            return True
+        if downs and self._take_stairs(downs, '>'):
+            return True
+        self.exploration(None).until(agent, self._budgeted(
+            lambda: utils.isin(agent.current_level().objects, G.STAIR_DOWN).any())).run()
+        return True
+
+    def _quest_meet_leader(self, st):
+        """Home 1: get next to the quest leader and #chat (quest.c chat_with_leader assigns the quest or expels
+        us to the portal level). True while this owns the step."""
+        agent = self.agent
+        if DiveLogic._LEADER_GLYPHS is None:
+            DiveLogic._LEADER_GLYPHS = frozenset(MON.from_name(n) for n in self.QUEST_LEADERS)
+        if agent.blstats.time - st['start'] > jf_config.QUEST_DIVE_LEADER_TURNS or st['chats'] >= 2:
+            # no leader found or no answer: try the '>' (the mysterious force tells whether we may go)
+            st['leader'] = True
+            agent.log('QUEST leader not reached: trying the stairs')
+            return False
+        found = [(int(y), int(x)) for y, x in zip(*utils.isin(agent.glyphs, DiveLogic._LEADER_GLYPHS).nonzero())]
+        pos = (agent.blstats.y, agent.blstats.x)
+        if not found:
+            self._task('quest dive: look for the leader')
+            self.exploration(None).until(agent, self._budgeted(
+                lambda: utils.isin(agent.glyphs, DiveLogic._LEADER_GLYPHS).any())).run()
+            return True
+        y, x = min(found, key=lambda p: max(abs(p[0] - pos[0]), abs(p[1] - pos[1])))
+        if not utils.adjacent(pos, (y, x)):
+            self._task('quest dive: walk to the leader')
+            agent.go_to(y, x, stop_one_before=True)
+            return True
+        self._task('quest dive: chat with the leader')
+        st['chats'] += 1
+        agent.log(f'QUEST chatting with the leader at {(y, x)}')
+        with agent.atom_operation():
+            agent.step(A.Command.CHAT)
+            agent.direction(agent.calc_direction(pos[0], pos[1], y, x))
+        st['leader'] = True
+        return True
 
     # --------------------------------------------------------- portal sweep
 

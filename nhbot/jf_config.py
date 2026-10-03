@@ -1737,6 +1737,20 @@ AT_THREAT_STILL = 4                 # turns an @ in view may stay no closer befo
 AT_THREAT_MAX_HOLD = 40             # holding turns per level, at most
 AT_THREAT_WAND_XL = 10              # the kept wand of digging is spent on an @ below this XL (or at half HP)
 
+# QUEST_DIVE (off; research/quest_dive.md): on the Quest home (Home 1 = 0.366) a hero of XL >= QUEST_DIVE_MIN_XL
+# #chats with the quest leader and, once assigned the quest, takes the '>' down to Home QUEST_DIVE_DEPTH (Home 2-5
+# = 0.546-0.566), then climbs back out through the portal and dives on. do.c goto_level bars every way down from
+# the home level ('A mysterious force prevents you from descending.') until quest.c ok_to_quest(): got_quest needs
+# XL >= 14 (MIN_QUEST_LEVEL), alignment record >= 20 and the original alignment; below that the leader expels you
+# (harmless: back to the portal level). The home levels are hardfloor+noteleport, so no dig/teleport bypass exists.
+# 0 of 13.9k nhbot dev games reached XL 13, so this is dormant until characters arrive much stronger.
+QUEST_DIVE = False
+QUEST_DIVE_MIN_XL = 14          # quest.c MIN_QUEST_LEVEL
+QUEST_DIVE_DEPTH = 5            # deepest quest level the scorer credits (progress.py Home 1..5)
+QUEST_DIVE_MIN_HP = 0.5         # below this HP fraction stop descending (rest/flee logic runs first) and climb out
+QUEST_DIVE_TURNS = 5000         # whole descent budget, from the first step on Home 1
+QUEST_DIVE_LEADER_TURNS = 600   # Home 1: turns spent finding/reaching the leader before trying the '>' anyway
+
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
