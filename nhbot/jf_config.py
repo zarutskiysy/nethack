@@ -1532,6 +1532,33 @@ MEDUSA_STRANDED_REROLLS = 6
 MEDUSA2_CYCLE = False
 MEDUSA2_CYCLE_MAX = 12              # climbs off Medusa-2
 MEDUSA2_CYCLE_HOLE_STEPS = 40       # BFS steps up there we walk to our old hole (else the dive digs a new one)
+# MEDUSA2_TITAN (off pending an A/B; research/med2_titan.md): MEDUSA2_CYCLE rebuilt around the titan; it takes the cycle
+# machinery over when on (MEDUSA2_CYCLE need not be set). What the source says about Medusa-2's titan (NLE 3.6.6):
+# - lawful (+9), so peace_minded() makes it peaceful for a lawful hero 10 times in 11 (rn2(16+record) && rn2(2+9));
+#   a peaceful caster never summons (mcastu.c spell_would_be_useless) -- the whole lawful 18/20 (dwarves are lawful)
+# - it casts an undirected spell on each of its moves that isn't a melee, within dist2 49 (monmove.c dochug), with a
+#   cooldown of only 2 turns (mcastu.c: mspec_used = max(10 - m_lev, 2), counted down once a turn); MGC_SUMMON_MONS is
+#   2 of rn2(17) at m_lev 17. Measured on the dev logs: 0.126 summons a turn before our pit (42 in 333 turns), ~2.3
+#   nasties each (wizard.c nasty, lawful caster), placed next to the spot it thinks we're at
+# - summoning needs couldsee(titan) from the hero (spell_would_be_useless 'doesn't think you're around'), and a hero
+#   trapped in a pit, sighted, could-see only the 3x3 around him (vision.c vision_recalc) -- in our own pit the titan
+#   summons, throws and zaps only from next to us (wizard-mode probe: every summon at a pit had it adjacent)
+# - it has no M2_STALK: it never follows us up the room's '<' (medusa.des (04,09) = screen (10, 6)), 4 squares from its
+#   start (02,05); and the level freezes while we're away (no catch-up moves), so the titan stays where we left it
+# MEDUSA2_CYCLE's dev arm (mv10_all, 30 Medusa-2 games so far: 4 passes against 10 for the same games on v10b) shows
+# why the plain cycle loses: its walk to the '<' runs into the titan ('hitting the monster in the way' -- a psi bolt
+# averages 31), the level above never had a reachable old hole (it dug a new one: exactly one level, no 1-in-4 skip),
+# and every re-landing walked back into the titan frozen beside the '<'. This version leaves by the '<' only when it
+# is close and the titan can't get there first (decided once per landing), never hits anything on the way (blocked:
+# dig where we stand), travels to the old hole above even through unexplored map, and keeps the usual dig otherwise.
+MEDUSA2_TITAN = False
+MEDUSA2_TITAN_EXIT_STEPS = 3        # leave by her '<' only from this many fixed-map steps (else dig where we landed)
+MEDUSA2_TITAN_EXIT_SLACK = 0.5      # race rule: our steps <= (titan's steps to beside the '<') / 1.5 + this
+MEDUSA2_TITAN_MAX = 4               # climbs off Medusa-2
+MEDUSA2_TITAN_HOLE_STEPS = 150      # BFS steps up there we walk to our old hole
+MEDUSA2_TITAN_TRAVELS = 6           # NetHack travel commands toward an old hole the known map can't reach yet
+MEDUSA2_TITAN_LAWFUL = False        # a lawful hero cycles too once the titan was seen hostile (1 game in 11; off: a
+                                    # misread peaceful one would send the 90%-passing lawful dig up the stairs)
 # ELBERETH_ATTACKED_REWRITE (off pending an A/B; research/medusa_v10.md): on Medusa's level, being attacked since our
 # last Elbereth on this square -- a pick-axe apply cut short ('You stop digging'), or a melee attack message, hit or
 # miss -- is proof the engraving doesn't hold that monster, so the next action rewrites it instead of re-applying the
