@@ -115,9 +115,17 @@ def known_cursed(item):
     return ' cursed ' in _words(item) and ' uncursed ' not in _words(item)
 
 
-def buc_known(item):
+def priest_sees_buc(agent):
+    """PRIEST_BUC: a Priest knows every item's B/U/C (objnam.c xname) and is never shown 'uncursed' (doname)."""
+    if not jf_config.PRIEST_BUC or agent is None:
+        return False
+    from .character import Character
+    return getattr(getattr(agent, 'character', None), 'role', None) == Character.PRIEST
+
+
+def buc_known(item, agent=None):
     w = _words(item)
-    return ' cursed ' in w or ' uncursed ' in w or ' blessed ' in w or ' holy water' in w
+    return ' cursed ' in w or ' uncursed ' in w or ' blessed ' in w or ' holy water' in w or priest_sees_buc(agent)
 
 
 def worn_rings(agent):
@@ -321,10 +329,10 @@ def _id_value(agent, item):
         if not item.is_unambiguous():
             v = 100 + 40 * _p(item, {TC_RING}) * 28 + 20 * _p(item, {LEV_RING}) * 28
             return v - (60 if _glyph(item) in st.tc_glyphs else 0)
-        return 20 if not buc_known(item) else 0
+        return 20 if not buc_known(item, agent) else 0
     if cat == nh.SCROLL_CLASS:
         if item.is_unambiguous():
-            if item.object == TELE_SCROLL and not buc_known(item):
+            if item.object == TELE_SCROLL and not buc_known(item, agent):
                 return 95        # a cursed one is a sure controlled jump
             return 0
         return 50 + 10 * min(item.count, 3) + 60 * _p(item, {TELE_SCROLL})
@@ -459,7 +467,7 @@ def _identify_candidates(agent, unknown=True):
 def _worth_identifying(agent):
     # rings (teleport control, levitation), wands, potions (levitation for the lift plan, confusion for a trigger)
     return any(_id_value(agent, i) >= 35 for i in _items(agent) if i.category != nh.SCROLL_CLASS) or \
-        any(i.category == nh.SCROLL_CLASS and i.is_unambiguous() and i.object == TELE_SCROLL and not buc_known(i)
+        any(i.category == nh.SCROLL_CLASS and i.is_unambiguous() and i.object == TELE_SCROLL and not buc_known(i, agent)
             for i in _items(agent))
 
 
@@ -535,7 +543,7 @@ def _altar_items(agent):
     """Carried rings, potions, scrolls and amulets whose BUC we don't know (the display shows no B/U/C word)."""
     out = []
     for it in _items(agent):
-        if it.category not in _ALTAR_CLASSES or it.equipped or buc_known(it):
+        if it.category not in _ALTAR_CLASSES or it.equipped or buc_known(it, agent):
             continue
         if it.category == nh.SCROLL_CLASS and jf_config.SCARE_KEEP:
             continue   # SCARE_KEEP never drops a possible scare monster scroll (and never picks one up again)
@@ -662,7 +670,7 @@ def _ring_test_ready(agent):
         return None
     st = state(agent)
     cands = [i for i in _items(agent) if i.category == nh.RING_CLASS and not i.equipped and not i.is_unambiguous()
-             and buc_known(i) and not known_cursed(i) and _glyph(i) not in st.ring_tested]
+             and buc_known(i, agent) and not known_cursed(i) and _glyph(i) not in st.ring_tested]
     if not cands:
         return None
     bl = agent.blstats
@@ -834,7 +842,7 @@ def _unholy_water(agent):
 def _unknown_water(agent):
     """Water of unknown BUC: 1 in 8 is unholy (mksobj blessorcurse(4)), 3 in 4 plain -- plain water blanks a scroll."""
     return [i for i in _items(agent) if i.category == nh.POTION_CLASS and i.is_unambiguous() and
-            i.object == WATER_POTION and not buc_known(i)]
+            i.object == WATER_POTION and not buc_known(i, agent)]
 
 
 def _dip(agent, item, potion, why):

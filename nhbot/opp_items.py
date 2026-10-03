@@ -180,12 +180,15 @@ def _words(text):
     return f' {text or ""} '
 
 
-def _buc(text):
+def _buc(text, agent=None):
     w = _words(text)
     if ' cursed ' in w and ' uncursed ' not in w:
         return 'cursed'
     if ' uncursed ' in w or ' blessed ' in w:
         return 'noncursed'
+    from .power_route import priest_sees_buc
+    if priest_sees_buc(agent):
+        return 'noncursed'   # PRIEST_BUC: no B/U/C word on a Priest's line means uncursed
     return None
 
 
@@ -197,7 +200,7 @@ def _read_status(agent, rd):
     proven = st.proven.get(rd['letter'])
     if proven is not None and proven[1] == rd['glyph']:
         return proven[0]
-    return _buc(rd['text'])
+    return _buc(rd['text'], agent)
 
 
 def _mino_near(agent):
@@ -354,7 +357,7 @@ def _known_genocide(agent):
             continue
         if 'unpaid' in (it.text or ''):
             continue
-        status = _buc(it.text)
+        status = _buc(it.text, agent)
         if status is None:
             try:
                 p = st.proven.get(agent.inventory.items.get_letter(it))

@@ -3341,6 +3341,99 @@ class Agent:
         low_hp = hp_ratio < 0.5 and (self.blstats.max_hitpoints - self.blstats.hitpoints > 25)
         return self.blstats.energy >= 15 and low_hp
 
+    # ---------------------------------------------------------------- SPELL_KIT (Priest starting spells)
+
+    _SPELL_COST = {'protection': 5, 'healing': 5, 'extra healing': 15, 'cure sickness': 15}
+
+    def _spell_kit_ok(self, name):
+        """SPELL_KIT: the spell is known, castable now and affordable (cost + reserve; a cure keeps no reserve)."""
+        if not jf_config.SPELL_KIT or name not in self.character.known_spells:
+            return False
+        bl = self.blstats
+        # spell.c: Stressed loses the turn, Fainting can't cast; each cast also costs 2 nutrition per Pw (non-Wizard)
+        if bl.carrying_capacity >= 2 or bl.hunger_state >= Hunger.WEAK:
+            return False
+        if self._last_turn - self.last_cast_fail_turn[name] < 3:
+            return False
+        if bl.time < getattr(self, '_cast_refused_until', -1):
+            return False
+        prop = self.character.prop
+        if prop.confusion or prop.stun:
+            return False
+        fail = self.character.spell_fail_chance.get(name)
+        if fail is None or fail > jf_config.SPELL_KIT_MAX_FAIL:
+            return False
+        reserve = 0 if name == 'cure sickness' else jf_config.SPELL_KIT_PW_RESERVE
+        return bl.energy >= self._SPELL_COST[name] + reserve
+
+    def _spell_kit_diving(self):
+        gl = getattr(self, 'global_logic', None)
+        dive = getattr(gl, 'dive', None)
+        return bool(getattr(dive, 'diving', False))
+
+    def _spell_kit_hostiles(self, radius):
+        bl = self.blstats
+        return [m for m in self.get_visible_monsters()
+                if max(abs(int(m[1]) - bl.y), abs(int(m[2]) - bl.x)) <= radius]
+
+    def _spell_kit_choice(self, deadly=0):
+        """The SPELL_KIT cast due now, or None: ('cure sickness', None) / ('extra healing'|'healing', (0, 0)) /
+        ('protection', None)."""
+        if not jf_config.SPELL_KIT:
+            return None
+        if deadly & (nh.BL_MASK_FOODPOIS | nh.BL_MASK_TERMILL) and self._spell_kit_ok('cure sickness'):
+            return 'cure sickness', None
+        if not self._spell_kit_diving() or self.character.prop.polymorph:
+            return None
+        bl = self.blstats
+        near3 = None
+        if bl.hitpoints < jf_config.SPELL_KIT_HEAL_FRAC * bl.max_hitpoints:
+            near3 = self._spell_kit_hostiles(3)
+            if near3:
+                missing = bl.max_hitpoints - bl.hitpoints
+                if missing > 20 and self._spell_kit_ok('extra healing'):
+                    return 'extra healing', (0, 0)
+                if self._spell_kit_ok('healing'):
+                    return 'healing', (0, 0)
+        if bl.time - getattr(self, '_spell_kit_prot_turn', -10 ** 9) >= jf_config.SPELL_KIT_PROT_GAP and \
+                self._spell_kit_ok('protection'):
+            near = self._spell_kit_hostiles(jf_config.SPELL_KIT_PROT_RADIUS) if near3 is None else \
+                [m for m in near3 if max(abs(int(m[1]) - bl.y), abs(int(m[2]) - bl.x)) <=
+                 jf_config.SPELL_KIT_PROT_RADIUS]
+            if near:
+                return 'protection', None
+        return None
+
+    def cast_nodir(self, spell_name):
+        """Cast a spell that asks no direction (protection, cure sickness): the menu letter only. Success is read
+        from the message (cast() counts a cast without an 'In what direction?' prompt as a failure)."""
+        with self.atom_operation():
+            def type_letters():
+                if 'You are too impaired' in self.message or self._CAST_REFUSED.search(self.message):
+                    return
+                yield self.character.known_spells[spell_name]
+
+            self.step(A.Command.CAST, type_letters())
+            msg = self.message
+            if self._CAST_REFUSED.search(msg):
+                self._cast_refused_until = self.blstats.time + jf_config.FB_REFUSE_TURNS
+            if self._CAST_REFUSED.search(msg) or 'You fail to cast' in msg or "You don't have enough energy" in msg:
+                self.last_cast_fail_turn[spell_name] = self._last_turn
+                self.stats_logger.log_event(f'cast_fail_{spell_name}')
+            else:
+                self.stats_logger.log_event(f'cast_{spell_name}')
+
+    def _spell_kit_cast(self, name, direction):
+        bl = self.blstats
+        self.log(f'SPELL_KIT {name} hp={bl.hitpoints}/{bl.max_hitpoints} pw={bl.energy} '
+                 f'fail={self.character.spell_fail_chance.get(name)}')
+        if name == 'protection':
+            self._spell_kit_prot_turn = bl.time
+        if direction is None:
+            self.cast_nodir(name)
+        else:
+            self.cast(name, direction=direction)
+
     @utils.debug_log('emergency_strategy')
     @Strategy.wrap
     def emergency_strategy(self):
@@ -3378,6 +3471,14 @@ class Agent:
             self.cast('healing', direction=(0, 0))
             self._deep_pray_after_heal()
             return
+
+        # SPELL_KIT (off): a Priest's starting cure sickness / early dive heals / dive protection (see jf_config)
+        if jf_config.SPELL_KIT:
+            kit = self._spell_kit_choice(int(self.last_observation['blstats'][nh.NLE_BL_CONDITION]))
+            if kit is not None:
+                yield True
+                self._spell_kit_cast(*kit)
+                return
 
         # hypothesis (astra guard.py stop list): stoning, sliming, strangling and food poisoning /
         # terminal illness kill within a few turns; prayer fixes all of them, so a riskier-than-usual

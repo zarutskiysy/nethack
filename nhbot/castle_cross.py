@@ -2429,7 +2429,8 @@ def _known_lasting_lift(castle):
     """(kind, item): a KNOWN lasting lift not in use -- a ring of levitation not known cursed, levitation boots known
     not cursed (90% are generated cursed: stuck in the air on a maze level that wasn't the castle), water walking boots,
     an amulet of magical breathing (CFP_MB) with no amulet on. None if there is none."""
-    from .power_route import known_cursed
+    from .power_route import known_cursed, priest_sees_buc
+    priest = priest_sees_buc(castle.agent)   # PRIEST_BUC: no B/U/C word on a Priest's line means uncursed
     items = castle._items()
     amulet_on = any(i.category == nh.AMULET_CLASS and i.equipped for i in items)
     boots_on = any(i.is_armor() and i.equipped and 'boots' in (i.text or '') for i in items)
@@ -2443,7 +2444,8 @@ def _known_lasting_lift(castle):
         elif it.is_armor() and name == 'water walking boots' and not known_cursed(it):
             cand = (1, 'boots', it)
         elif it.is_armor() and name == 'levitation boots' and (' uncursed ' in f' {it.text} ' or
-                                                               ' blessed ' in f' {it.text} '):
+                                                               ' blessed ' in f' {it.text} ' or
+                                                               (priest and not known_cursed(it))):
             cand = (2, 'boots', it)
         elif jf_config.CFP_MB and it.category == nh.AMULET_CLASS and name == MB_NAME and not amulet_on:
             cand = (3, 'amulet', it)

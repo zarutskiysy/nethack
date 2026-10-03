@@ -4,6 +4,10 @@
   tier -- Gnomish Archeologists on pf_v36, neutral human Rangers and the female elven Ranger on pf_s25p8, Knights on
   pf_s25p8 -- and no daglar profile for Rangers, Rogues and Tourists (every Ranger and Rogue identity scored lower with
   it); Tourists back on nhbot. The public-seed-selected ports of v6/v7 overfit the 15 public seeds and are left out.
+- **pri-cav (default off, dev A/B pending)**: `PRIEST_BUC` -- a Priest's item lines carry no 'uncursed' (objnam.c),
+  so the power route took its uncursed items for unknown BUC (altar trips, no ring tests, wasted identify reads,
+  plain water as maybe-unholy, uncursed levitation boots rejected); `SPELL_KIT` -- the Priest's starting cure sickness,
+  dive-phase protection and earlier dive heals. Both act in the dive (cure sickness: only when food-poisoned/ill).
 - **v9p2**: v9p plus three routes with one verified sample each: neutral human Archeologists and orcish Barbarians on
   pf_s25p8, neutral human Wizards on pf_vk_s25.
 

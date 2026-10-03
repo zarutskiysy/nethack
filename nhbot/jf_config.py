@@ -1737,6 +1737,30 @@ AT_THREAT_STILL = 4                 # turns an @ in view may stay no closer befo
 AT_THREAT_MAX_HOLD = 40             # holding turns per level, at most
 AT_THREAT_WAND_XL = 10              # the kept wand of digging is spent on an @ below this XL (or at half HP)
 
+# PRIEST_BUC (off; research/pri_cav.md): a Priest knows the B/U/C of every item it sees (objnam.c xname:
+# Role_if(PM_PRIEST) -> bknown) and is never told 'uncursed' (doname: implicit_uncursed && !Role_if(PM_PRIEST)), so
+# 'a granite ring' on a Priest's line IS uncursed. The power route read a missing B/U/C word as 'unknown': Priests walked
+# to altars to drop uncursed rings/potions/scrolls (TC_ALTAR), never ring-tested an uncursed unknown ring
+# (TC_RING_TEST), spent identify reads on teleport scrolls of 'unknown BUC' (value 95), took plain water for possibly
+# unholy water (the gamble's dip blanks the scroll 3 times in 4), and rejected uncursed levitation boots for the castle.
+# With the flag a Priest's item lines count as BUC-known (power_route.buc_known, opp_items._buc, castle_cross lift).
+PRIEST_BUC = False
+# SPELL_KIT (off; research/pri_cav.md): use the clerical/healing spells a Priest may start with (u_init.c Priest[]: two
+# random spellbooks of level <= 3 from the healing/divination/clerical schools; P(in kit) ~19% healing, 13% extra
+# healing, 16% cure sickness, 9% protection) -- only protection, early heals and cure sickness, and only where pairs
+# stay identical until first use:
+#  * dive only: 'protection' (5 Pw, AC -(log2(XL)+1) for ~10 turns per point, spell.c cast_protection) when a hostile
+#    is within SPELL_KIT_PROT_RADIUS and no cast in the last SPELL_KIT_PROT_GAP turns;
+#  * dive only: healing / extra healing already at HP < SPELL_KIT_HEAL_FRAC (emergency_strategy's own cast waits for
+#    50%) while a hostile is within 3 and Pw stays >= SPELL_KIT_PW_RESERVE after the cast;
+#  * anywhere: 'cure sickness' (15 Pw) for food poisoning / terminal illness before the deadly-status prayer.
+SPELL_KIT = False
+SPELL_KIT_HEAL_FRAC = 0.65
+SPELL_KIT_PROT_RADIUS = 2
+SPELL_KIT_PROT_GAP = 10
+SPELL_KIT_PW_RESERVE = 5
+SPELL_KIT_MAX_FAIL = 0.25
+
 _raw = os.environ.get('JF_CFG')
 if _raw:
     for _name, _value in json.loads(_raw).items():
