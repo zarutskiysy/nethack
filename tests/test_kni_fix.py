@@ -376,7 +376,13 @@ def test_steed_update_records_the_horse():
     agent.message = ''
     agent.step_count = 7
     keeper = KS.SteedKeeper(agent)
-    keeper.update()
+    with Flags(PET_EXILE=False):   # integ: the record is gated (flag off = v10c's update())
+        keeper.update()
+    assert keeper._horse_seen is None, keeper._horse_seen
+    assert keeper._pets == [(7, 15, 'pony')]
+    agent.step_count = 8
+    with Flags(PET_EXILE=True):
+        keeper.update()
     assert keeper._horse_seen == (D1, 1234), keeper._horse_seen
     assert keeper._pets == [(7, 15, 'pony')]
 

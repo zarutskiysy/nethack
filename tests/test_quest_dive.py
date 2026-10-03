@@ -210,7 +210,12 @@ def test_explore_when_no_stairs_known():
 
 def test_leave_quest_climbs_from_below_home():
     dive, agent = make(dlevel=4)
-    dive.leave_quest()
+    old = jf_config.QUEST_DIVE
+    jf_config.QUEST_DIVE = True   # integ: the climb is gated (flag off = v10c's leave_quest on every quest level)
+    try:
+        dive.leave_quest()
+    finally:
+        jf_config.QUEST_DIVE = old
     assert agent.calls == ['climb']
 
 

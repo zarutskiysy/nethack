@@ -39,6 +39,7 @@ import re
 
 import nle.nethack as nh
 
+from . import jf_config
 from . import objects as O
 from . import utils
 from .character import Character
@@ -151,7 +152,7 @@ class SteedKeeper:
                 if name in HORSES:
                     pets.append((int(y), int(x), name))
         self._pets = pets
-        if pets:
+        if pets and jf_config.PET_EXILE:   # integ: gated so that flag-off keeps v10c's update() exactly
             self._horse_seen = (agent.current_level().key(), turn)
 
     # ---- PET_EXILE (jf_config, dive_logic.pet_exile_strategy)

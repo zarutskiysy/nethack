@@ -10021,8 +10021,9 @@ class DiveLogic:
         """Home 1 is banked on arrival; walk back through the portal and keep diving."""
         agent = self.agent
         level = agent.current_level()
-        if level.level_number > 1:
-            # below the home level (QUEST_DIVE): climb the '<' back to it first
+        if jf_config.QUEST_DIVE and level.level_number > 1:
+            # below the home level (QUEST_DIVE): climb the '<' back to it first (integ: gated -- v10c looked for the
+            # portal on any quest level)
             return self.return_to_main_dungeon()
         portals = [(y, x) for y, x in zip(*utils.isin(level.objects, PORTAL).nonzero())]
         if not portals and self.quest_arrival is not None:
