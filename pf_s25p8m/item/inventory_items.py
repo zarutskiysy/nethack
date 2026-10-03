@@ -1,6 +1,6 @@
 import nle.nethack as nh
 
-from nhbot import jf_config, objects as O
+from pf_s25p8m import objects as O
 
 
 class InventoryItems:
@@ -86,7 +86,6 @@ class InventoryItems:
             assert len(iterable) == len(set(map(lambda x: x[-1], iterable))), \
                 'letters in inventory are not unique'
 
-            pending = None      # INV_FULL_LIST: an exception from a container check, raised once the list is complete
             for item_name, category, glyph, letter in iterable:
                 item = self.agent.inventory.item_manager.get_item_from_text(item_name, category=category,
                                                                             glyph=glyph if not nh.glyph_is_body(
@@ -114,21 +113,12 @@ class InventoryItems:
                             break
 
                 # applying a bag mid-fight wasted turns during a dive (leocrotta death); defer it
-                if pending is None and \
-                        (item.is_possible_container() or (item.is_container() and self._recheck_containers)) and \
+                if (item.is_possible_container() or (item.is_container() and self._recheck_containers)) and \
                         not (getattr(getattr(getattr(self.agent, 'global_logic', None), 'dive', None), 'diving', False)
                              and self.agent.get_visible_monsters()):
-                    if jf_config.INV_FULL_LIST:
-                        try:
-                            self.agent.inventory.check_container_content(item)
-                        except BaseException as e:
-                            pending = e
-                            self.agent.log(f'INV_FULL_LIST: {type(e).__name__} in the container check of {letter} '
-                                           f'{item_name!r}: the list is finished before it goes up')
-                    else:
-                        self.agent.inventory.check_container_content(item)
+                    self.agent.inventory.check_container_content(item)
 
-                if pending is None and (self.agent.last_observation['inv_strs'] != previous_inv_strs).any():
+                if (self.agent.last_observation['inv_strs'] != previous_inv_strs).any():
                     self.update()
                     return
 
@@ -139,8 +129,6 @@ class InventoryItems:
                 # {'speed boots': 20, 'water walking boots': 15, 'jumping boots': 20, 'elven boots': 15, 'fumble boots': 20, 'levitation boots': 15}
                 # {'luckstone': 10, 'loadstone': 500, 'touchstone': 10, 'flint': 10}
 
-            if pending is not None:
-                raise pending
             self._recheck_containers = False
 
     def get_letter(self, item):

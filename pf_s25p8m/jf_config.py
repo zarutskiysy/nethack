@@ -141,17 +141,6 @@ AT_ELBERETH_FIX = True
 AT_FOCUS = 10
 # with AT_ELBERETH_FIX: the dig out gives way to the fight for an ignorer this many steps away (1: adjacent only)
 AT_DIG_RADIUS = 2
-# LMINION_ELBERETH (dive_logic._melee_ignores_elbereth, elbereth_rest): lawful minions -- every A (Aleax, couatl, Angel,
-# ki-rin, Archon: M2_MINION, generated lawful) -- melee through Elbereth: monmove.c onscary returns FALSE for
-# is_lminion() before it looks at an engraving (or a scroll of scare monster). The dive counted them as scared: it
-# engraved, dug and rested on Elbereth next to them while each attack stopped the dig ('You stop digging'), and fight2
-# kept its -100 Elbereth penalty on hitting them. 29 of 1150 deduped games (fx1/b3/mcb0/v2a/tr0/p0) were killed by one:
-# 10 on Medusa-2's level (the titan's summon-nasties: couatl/Aleax), 9 mid-dive at Dlvl 12-20, 10 in the mazes and the
-# castle; 24 show Elbereth writes naming the A or 'You stop digging' in their last 25 turns (e.g. fx1
-# ran-hum-cha-mal__603: four interrupted applies under a couatl's bites, then a minotaur). With the flag they count as
-# melee Elbereth-ignorers (AT_ELBERETH_FIX fights them, the dig escape stops digging beside them) and no Elbereth rest
-# is taken next to one (CASTLE_SCARE's scroll drop is unchanged: a scroll doesn't scare them either).
-LMINION_ELBERETH = True
 # LAST_RESORT: pray at critical HP beside a hostile once this many turns have passed since the last prayer
 # (0: off; the ordinary low-HP prayer waits 500)
 # ON (train 3): castle A038 guard neutral (-0.002); harness 2 Grey-elves at 12/72 HP deaths 9/10 -> 3/10
@@ -209,21 +198,6 @@ CASTLE_POLY = True
 # and hold on the pile, striking what stays next to us (dive_logic.gehennom_scare's hold loop)
 # ON (train 3.3, power castle set; acts from depth 25 on the main line, same score in the inertness replay)
 CASTLE_SCARE = True
-# MEDUSA_NOT_CASTLE (research/deep_deaths.md): two castle-landing strategies are gated by depth alone
-# (CASTLE_SCARE_DEPTH 25), so they also act on Medusa's own level when it lies at depth 25-28: 205 of 516 Medusa
-# arrivals in the six dev tags, and one of the two fired in 73 of them (47 died there).
-#  - CASTLE_SCARE (dive_logic.gehennom_scare) drops every unknown scroll that may be scare monster when an
-#    'Elbereth-ignorer' is within 2 -- there mostly a raven or snake remembered as 'unknown' while blind, a spitting
-#    cobra or the titan -- and digs on from the pile with the pick (max_wet 8), outside the Medusa dig-square logic and
-#    WAND_RESERVE's zap (p0 wiz-hum-cha-mal__206: ~40 turns of pick digging from the pile among black nagas, a known
-#    wand of digging never zapped); the scrolls stay behind when the hole opens (lost for the castle).
-#  - CASTLE_POLY's deep escape (castle_power.deep_poly_escape_strategy) zaps a known wand of polymorph at ourselves
-#    below 60% HP (b3 val-dwa-law-fem__608: 6 self-zaps among Medusa-3's ravens in 14 turns, armour, helm, boots and
-#    the mattock dropped, dead) or gambles unknown wands at an adjacent 'unknown' or cobra from our Elbereth square
-#    ('You feel like a hypocrite. The engraving beneath you fades.': b3 ran-hum-cha-mal__602, mcb0 mon-hum-neu-mal__205).
-# castle_cross._castle_likely and power_route already exclude Medusa's level; with the flag these two do too
-# (DEEP_ITEMS keeps its own Medusa-level use of KNOWN scare monster scrolls).
-MEDUSA_NOT_CASTLE = True
 # castle: rest before/while crossing one square in from the moat, never on the courtyard's moat edge
 # ON (train 3.3, power castle set)
 CASTLE_EDGE_REST = True
@@ -400,18 +374,6 @@ LOWHP_EXACT = False
 # Validated (grind-audit bundles GA-B2/GA-B3, 270 fresh pinned games each vs cand-g, ledger R191/R196): first to fire in
 # 3 games, +0.97 / +0.81 net (jf46 s8 0.037 -> 0.507, jf49 s2 0.051 -> 0.554). Candidate value: 5.
 LOWHP_CRIT_XL = 5
-# DEEP_PRAY_FIRST (research/deep_deaths.md): agent.emergency_strategy casts healing (HP < 50%) and quaffs known potions
-# of healing (HP < 1/3) BEFORE it considers the HP prayer, so at pray.c's critically_low_hp with a safe prayer due it
-# heals 6d4 a turn (spell or uncursed potion) beside monsters that take more than that -- Monks start with 3 potions of
-# healing (u_init.c) and 1 in 3 with the healing spell. A safe prayer instead fixes TROUBLE_HIT (full HP) and its 3
-# turns are invulnerable (pray.c dopray: p_type 3 -> u.uinvulnerable). In the six dev tags 39 deaths came within 3
-# turns of a heal with a safe prayer unused (gap >= 1000, no failure), 28 of them in the dive at Dlvl 10-28 off the
-# castle, 35 of the 39 Monks (v2a mon-hum-cha-mal__203 quaffed twice at 5/56 HP beside a minotaur, prayer gap 1244).
-# With the flag, diving at depth >= DEEP_PRAY_FIRST_DEPTH (not in Gehennom, not polymorphed), critically low HP and
-# the model's safe 'hp' decision (never the doom gamble) pray before any heal. The grind keeps the old order (its
-# prayers feed it).
-DEEP_PRAY_FIRST = True
-DEEP_PRAY_FIRST_DEPTH = 10
 # TOUR_FAINT_LONG_TURNS (off: 0, grind-audit): in the tour, a Fainting spell this many turns old prays from gap
 # TOUR_FAINT_LONG_GAP instead of waiting for TOUR_FAINT_PRAYER_GAP (1600). eat.c: a faint lasts 10 - uhunger/10 turns
 # and starts on a conscious turn with rn2(20 - uhunger/10) >= 19, so deep into a spell (uhunger ~ -100) we lie fainted
@@ -584,25 +546,6 @@ BEARTRAP_ESCAPE = True
 LYCAN_FIXES = True
 # no lycanthropy cure prayer while Hungry without food (wait for the Weak hunger prayer; see cure_disease)
 LYCAN_CURE_WAIT = False
-# PET_HUNGER_FIX (agent.eat_corpses_from_ground; research/wizard_deaths.md): '<pet> is confused from hunger.' (dogmove.c
-# dog_hunger: 500 turns past its hungrytime -- a starting pet that ate nothing by ~T1500; it starves 250 turns later)
-# means our pet goes for us: mon.c mfndpos gives a confused monster ALLOW_ALL, and dog_move then mattacku()s us from a
-# square it picks at random. fight2 never answers (the pet glyph is no target, and killing it is -15 alignment and
-# Luck -1, mon.c xkilled). All five 'killed by a kitten' Wizard deaths in b3/wz0/c0 were this, at XL 1-2 and
-# T1504-1625 -- fx1 wiz-hum-neu-mal__609: 'The kitten is confused from hunger.  You stop eating the jackal corpse.  The
-# kitten bites!', wz0 wiz-hum-cha-mal__643 bitten for 55 turns while searching. A meal cures it (dog_eat: mconf = 0), and
-# CLAIM_CORPSES (and the plain corpse eating) took the kills it would have eaten. With the flag, for PET_HUNGER_TURNS
-# turns after the message, or until a pet is seen eating, we eat no corpse off the floor unless we are Weak ourselves.
-PET_HUNGER_FIX = True
-PET_HUNGER_TURNS = 250
-# RECORD_MODEL_FIX (nhmodel/prayer.py on_prayer): the record +1 of pray.c:941 only for prayers made without major
-# trouble (the old rule also counted every hunger prayer, so record-0 heroes looked safe after their first prayer)
-RECORD_MODEL_FIX = True
-# ALIGN_PRAYER (agent.align_prayer): a hero whose modelled alignment record is still <= 0 makes one no-trouble prayer
-# (fed, no hostile in view, not on an altar) from turn ALIGN_PRAYER_TURN on, before any other prayer: +1 record, so
-# later prayers always fix the worst major trouble. Off pending an A/B (research/shallow_deaths.md)
-ALIGN_PRAYER = False
-ALIGN_PRAYER_TURN = 350
 # were_unload drops a were form's load whenever Overtaxed or worse, not only when Weak with food to eat
 # t35: jf16 s6 0.602 -> 0.051 (a 9-HP were form dropped all 20 items on Dlvl 3 and never went back for them), jf14 s12
 # and arm-jf25 s0 -0.040 each -- off
@@ -627,9 +570,6 @@ HOLD_LOOP = True
 HOLD_LOOP_RESCUE = False
 # dev only (never set in the arena): the Nth tour hunger prayer is treated as failed, turning games into rescues
 SIM_RESCUE_PRAYER = 0
-# PRAYER_RECORD_FIX (agent.pray): record a prayer (last_prayer_turn, the prayer model's timeout/result) even when a
-# preempting strategy interrupts the PRAY step -- see agent.pray (research/shallow_deaths.md item 1)
-PRAYER_RECORD_FIX = True
 # Water demon vigil fixes (dive_logic.water_demon_vigil): step off the fountain before engraving (the dip
 # leaves us on it: 'You can't write on the fountain!', so the vigil never held), hold while a demon is
 # within DEMON_VIGIL_RADIUS (not 2) for DEMON_VIGIL_TURNS. 74 of 975 dipping games released a demon, 22
@@ -658,27 +598,12 @@ WR_GRIND_PRAYER = 0
 WR_BLIND_LOOK = False
 # the Elbereth rest never hides from a lone monster one blow kills (difficulty <= 2, not fast), at any HP
 REST_FIGHT_WEAK = False
-# LONE_WEAK_THREAT (dive_logic._lone_weak_deadly): the Elbereth rest's 'a lone mlevel <= 2 monster is better killed'
-# exemption applies only while that monster can't kill us within LONE_WEAK_TURNS turns with P >= LONE_WEAK_PDIE (a rothe
-# at 19 HP: ~0.24; a giant bat at 16: ~0.66; a jackal or newt: ~0). Off pending an A/B (research/shallow_deaths.md)
-LONE_WEAK_THREAT = False
-LONE_WEAK_TURNS = 3
-LONE_WEAK_PDIE = 0.1
 # never kill a gas spore whose blast reaches any @, a shop's squares (its shopkeeper may be out of view) or anything in
 # Minetown; its melee is filtered out of fight2 (throws already skip it). Explosion damage from our kill is our
 # attack on every peaceful in the 3x3 (explode.c): 3 of the 4 murders in 16 recent runs came from it (cmp-main
 # jf40 s12: two watchmen in Minetown, Luck -4, prayers held, died fainting 0.075; cmp-main jf41 s5 and base10arm
 # jf16 s11: shopkeeper Wonotobo). Only in the gc-h4 bundle so far (rejected as a whole, R032).
 SPORE_SAFE = True
-# HOSTILE_RECHECK (monster_tracker.update; research/wizard_deaths.md): the peaceful mask follows a monster from square to
-# square by its glyph and is re-read from the game only when that tracking is ambiguous -- and a peaceful that turns
-# hostile keeps its glyph. A former pet left on another level comes back untame but peaceful (dog.c
-# mon_catchup_elapsed_time); c1 wiz-gno-neu-mal__624 killed a gas spore with force bolt, 'The kitten is caught in the gas
-# spore's explosion!  The kitten hisses!' (explode.c -> mon.c setmangry), and the kitten bit the XL-7 Wizard 16 times
-# over 20 turns, a prayer included, while the bot searched and opened doors, never answering (dead at T10359). With the
-# flag a domestic animal (cat, dog, horse kinds) next to us that the mask calls peaceful is taken for hostile when a
-# message says it attacked us and it is the only one of its name next to us.
-HOSTILE_RECHECK = True
 # a floating eye is hit blindfolded (blindfold/towel on, F-attack, off again), else by a throw, else as before
 # ON (train 3.4, grind-combat A063): blindfold/towel on before meleeing a floating eye (jf16 s12 replay: no freeze, no rock-mole death)
 FEYE_BLIND = True
@@ -693,11 +618,6 @@ FEYE_TELE = True
 # ...boxed in by an eye (no step to take): Elbereth to make it flee; still boxed after this many turns: hit it anyway
 # (at full HP, fed, alone; see agent.fight2)
 FEYE_TELE_BOXED = 150
-# FEYE_GUARD (agent.fight2): a floating eye we can see is meleed before telepathy too only alone, at >= 90% HP and not
-# Hungry, and every eye melee (stall breaker, FEYE_TELE boxed-in) needs 'not Hungry' instead of 'not Weak'. Off pending
-# an A/B (research/shallow_deaths.md: 6 of 7 eye-freeze deaths in 1023 games came before telepathy, 3 of them under
-# conditions this blocks)
-FEYE_GUARD = False
 # a missile/wand/ray hit breaks the Elbereth holds (rest, faint guard/shelter, demon vigil) and fight2's
 # wait-on-Elbereth for RANGED_BREAK_TURNS turns: fight2 then closes in on a weak shooter or leaves its line
 # ON (train 3.4, A063): a hold breaks when shot/zapped from range; guard vs base7 45 amd64 0.446 vs 0.415, grind deaths 5 -> 1
@@ -710,10 +630,6 @@ RANGED_BREAK_TURNS = 8
 # its castle is at Dlvl 28)
 # ON (train 3.5): t35/t36 public s11 kept its pick at that drop step (0.075 -> 0.602 / 0.466), no other game changed by it
 TOOL_KEEP_FIRST = True
-# HEAVY_LIFT_GUARD (item/inventory.pickup, item/item_manager): answer 'n' to 'You have much trouble / extreme difficulty
-# lifting X. Continue?' (Stressed or worse after the lift) and read a lycanthrope's corpse as its human form (1450, not
-# the animal's 40-500): 4 shallow deaths in 1023 games carried such a load (research/shallow_deaths.md)
-HEAVY_LIFT_GUARD = True
 # the faint guard (and its idle hold) also in a tool-less dive that is not a rescue -- the Mines camp waits
 # thousands of turns for a dwarf's pick like the grind waits for XP, but fainted unguarded among the Mines' hostiles:
 # base8 tool-less camps fainted 2-23 times, and all 6 died there (large dog, soldier ant, gargoyle, gray unicorn)
@@ -747,50 +663,18 @@ MEDUSA_NO_RETREAT = True
 # crossing) and from Gehennom level 50 exactly (the top of the progress table) or the vibrating-square level when
 # shallower (teleport.c level_tele): answer 50 in those two dungeons. Only reachable with teleport control (2 of 360 recent games), so dominant and default on.
 LEVELPORT_DEEP = True
-# MEDUSA_TITAN_MSG (with dive_logic.MEDUSA_TITAN_DETECT): Medusa-2 is also recognised by a titan NAMED in a message, not only
-# by a titan glyph in view. Her arrival room (medusa.des (02,03)-(05,16)) is unlit and closed, so the 30 moat squares are
-# never seen, and its titan -- awake, speed 18 -- acts from outside the lit 3x3 ('The titan casts a spell!', 'The titan
-# throws a boulder!', 'The titan turns to flee.') a turn or more before its glyph is in view. Of ~135 Medusa-2 arrivals in
-# tr0/p0/v2a/mcb0/b3/fx1, 31 were never recognised (13 died there, 18 dug through to the castle unaware; an invisible
-# titan -- mcastu.c MGC_DISAPPEAR -- is only 'It', so this rule misses those too) and recognised ones waited up to 31
-# turns for the glyph. Meanwhile WAND_RESERVE keeps the wand of digging for 'later' (fx1 wiz-hum-neu-mal__601: 'The titan
-# hits!  The titan casts a spell at you!' on the landing turn T18964, no glyph until T18965, a horn and a scroll drop came
-# first, dead at T18966 with the wand unused) and the mazes below get no arrival zap (below_medusa() is None).
-# Both titan rules now skip a level where 'You hear a door open.' was heard: the castle (its soldiers open doors within
-# ~3 turns of every landing, CFP_SENSE), whose throne room may hold a titan -- mcb0 ran-gno-neu-mal__204 took a court
-# titan on its Dlvl-26 castle for Medusa-2, 50 turns after the landing (research/deep_deaths.md).
-MEDUSA_TITAN_MSG = True
 # a wand of wishing -> Gehennom's bottom-1 (tele_route.py): wish 1 = a ring of teleport control (worn), wish 2 = '2 cursed
 # scrolls of teleportation' (the wand is wrested for its last charge if needed), then read one anywhere in the Dungeons
 # (-> the Valley, castle+1) and one in the Valley (-> the vibrating-square level, Dlvl ~44-52: 0.78-0.81). Harness
 # lp-e2e: TC ring + a cursed scroll read on Dlvl 12 -> the Valley (Dlvl 26). Harness wr-unknown/wr2-unknown (XL 6 on Dlvl 3
 # with an unidentified wand of wishing): 12/12 into Gehennom, 10/12 to Dlvl 44-51. ON: it only acts with a wand of wishing.
 WISH_TELEPORT_ROUTE = True
-# MEDUSA_ZAP_FIRST (with DEEP_ITEMS, WAND_RESERVE): on Medusa's level DEEP_ITEMS' gambles -- an unknown horn, a bugle, a
-# scroll of taming, eyewear, a scare scroll put under the dig -- wait while dig_first's next action is the kept wand of
-# digging zapped down where we stand (zap.c zap_dig -> dighole: one action, one flood roll, gone). deep_items_strategy
-# sits above dig_first, so with a hostile pressing us it went first: fx1 wiz-hum-neu-mal__601 landed on Medusa-2 next to
-# the titan with a known wand of digging, blew an unknown horn (a horn of plenty: 'Some food spills out.') at T18965,
-# 47 -> 38 HP, dropped its scrolls (CASTLE_SCARE) at T18966 and died there, 54 -> 7 HP, the wand never zapped; mcb0
-# arc-hum-neu-fem__203 (Medusa-1), b3 cav-hum-neu-mal__605 (lenses), mcb0 wiz-hum-neu-mal__202 (a bugle) and tr0
-# mon-hum-cha-mal__202 (two taming scrolls) also played their item before the zap (research/deep_deaths.md).
-MEDUSA_ZAP_FIRST = True
 # WISH_CHARGING_FIRST (castle-front lane, research F076): a wand of wishing's first wish is '2 blessed scrolls of
 # charging'; the route's wishes then zap the wand down to (x:0), and one scroll is read on it before any wrest.
 # mkobj.c: spe = rnd(3), recharged = 0; read.c recharge(): lim 3 for wishing, a blessed charge sets spe to 3 when
 # spe < 3, and a second recharge explodes it. So c + 2 wishes instead of c: a 1-charge wand (1 in 3) got only the
 # teleport-control ring before (tele_route.py).
 WISH_CHARGING_FIRST = True
-# STALKER_ZAP_FIX (off pending an A/B; dive_logic._dig_escape_action): above Medusa, where WAND_RESERVE keeps the wand of
-# digging, its 'escape' zap at an adjacent Elbereth-ignorer is skipped when every such ignorer is next to us and M2_STALK
-# (soldiers, sergeants, lieutenants, captains, Aleax, couatl and the other 'A', Olog-hai, vampire lords): dog.c
-# keepdogs() takes an adjacent stalker along through our hole (monnear && levl_follower), so the zap moves the fight one
-# level down and costs a charge -- fight2 fights it here instead (the emergency zap below WAND_RESERVE_HP stays). 56 escape
-# zaps had an adjacent stalker in 1150 games; 35 times it was next to us again on the level below, in chains of 3-5 zaps
-# (fx1 bar-hum-neu-mal__601: one soldier followed 4 zaps on Dlvl 9-12, T8216-8218, the wand ran dry and the game died on
-# Medusa-2 at Dlvl 23 with no charge left; tr0 bar-orc-cha-mal__208: an Aleax followed 3 zaps, dead on Dlvl 14). 4 Medusa
-# arrivals had emptied their wand this way; Medusa-2 passes 81% with a wand vs 39% for pick-only non-dwarves.
-STALKER_ZAP_FIX = False
 # ROUTE_GLOVES_FIX (front-strong lane, off): cursed gloves or a welded weapon block the teleport-control ring without
 # using a move ('You cannot remove your gloves to put on the ring.'), and the route's ring step retried forever (fs7-k6
 # s9: 385k steps after the castle wand; any wand-of-wishing game with cursed gloves). Then the next wish is a blessed
@@ -828,12 +712,6 @@ SHOP_GUARD = True
 # '?c?c  ??r ir?? ?', kicked the door open ("How dare you break my door?") and the shopkeeper killed the XL-7
 # grinder (0.051). 6 broken shop doors in ~6000 games of all runs.
 SHOP_SIGN_FIX = True
-# SHOP_SAFETY (item/inventory.get_ranged_combinations, combat/fight_heur.get_potential_wand_usages): in a shop or with a
-# shopkeeper in view only missiles known not to be cursed are thrown (dothrow.c: a cursed one slips 1 in 7 in a random
-# direction), elsewhere no known-cursed missile while a peaceful or the pet is in view; and no wand plan kills a gas
-# spore whose blast reaches a peaceful, a shop square or the pet (SPORE_SAFE's rule for melee and throws). 3 of the 5
-# shopkeeper deaths in 1023 games (research/shallow_deaths.md)
-SHOP_SAFETY = False
 
 # --- valley-run (the Valley of the Dead with real castle-arrival kits: XL 7-10, 55-114 HP, AC -8..+10) ---
 # VALLEY_SPRINT (off, REJECTED -- no signal): the Valley walk never stops to fight what it can outrun
@@ -1194,32 +1072,6 @@ STAIR_BOULDER_WAIT = 300
 # on a level where one was seen. cmp-main: minotaurs killed 23 of 90 games; 3 of the 7 dev-set maze deaths carried a
 # known item that ends the fight in one action (jf14 s0 genocide, jf16 s10 teleport scrolls, jf41 s13 teleport wand).
 MINO_GUARD = True
-# MINO_TAME (mino_guard; research/deep_deaths.md, maze lane): an awake minotaur next to us and a KNOWN scroll of taming
-# that isn't known cursed -> read it (after the wand of digging, before every gamble). read.c SCR_TAMING calls maybe_tame
-# on each monster within 1 square (5 confused); resist() is rn2(100 + 9 - 15) < mr and a minotaur's MR is 0, so it never
-# resists, and dog.c tamedog refuses only humans, minions, shopkeepers/guards/priests, covetous and demons: the minotaur
-# turns into a pet that fights for us, and the hole is dug in peace. The guard only ever read a taming scroll as part of
-# an UNKNOWN scroll's P(save); a Monk's starting scroll is often a known one: mcb0 mon-hum-law-mal__202 (filler maze,
-# Dlvl 23, 'd - a blessed scroll of taming') read an unknown scroll instead and died at 42/51 HP; four castle-landing
-# minotaur deaths held one too (mcb0 mon-hum-neu-mal__202, v2a mon-hum-cha-mal__207, v2a mon-hum-neu-mal__207, fx1
-# mon-hum-law-mal__603). With the flag the guard also ignores minotaurs shown as pets or peaceful (our tamed one).
-MINO_TAME = True
-# MINO_DIG_GUARD (mino_guard): the guard's 'dig out now' plans (every minotaur in view asleep from our ray; HORN_SCARE's
-# fleeing minotaur) only while nothing else next to us will stop the dig: an attack, hit or miss, ends the dig occupation
-# (mhitu.c stop_occupation), so with an Elbereth-ignorer (@, lawful minion) -- or anything, without an intact Elbereth
-# under us -- adjacent, each 'dig' is a turn of free blows, and the guard (above fight2) never lets fight2 answer it.
-# tr0 ran-gno-neu-mal__207 (filler maze, Dlvl 24): the minotaur asleep 2 squares off, a lieutenant adjacent: 'MINO dig
-# out (minotaur asleep at 2)' twice, 'You continue digging downward. The lieutenant hits! You stop digging.', 46 -> 0 HP.
-MINO_DIG_GUARD = True
-# MINO_CASTLE_ZAP (mino_guard): no zap of the wand of digging down where this level has shown itself to be the castle
-# before the dive recognised it -- below Medusa a 'You hear a door open.' (dive._door_heard: the castle's soldiers; the
-# filler mazes have no doors, CFP_SENSE: 101/101 castle arrivals vs 1/185 fillers) or a refused dig. On the castle
-# Can_dig_down is false, so the zap only digs a pit (dig.c dighole -> digactualhole PIT: u.utrap rn1(4,2), wake_nearby)
-# and holds us next to the minotaur. b3 cav-hum-neu-mal__605 ('You hear a door open.' x2, then 'MINO zapping a wand of
-# digging down' -> 'You dig a pit in the floor. The minotaur hits! The minotaur hits!'), tr0 cav-hum-law-mal__212 (the
-# same), p0 wiz-hum-cha-mal__202 (the zap after the pick's 'The floor here is too hard to dig in.'). The castle depth is
-# banked, so this keeps the wand's charges and the guard's other options for the crossing rather than score directly.
-MINO_CASTLE_ZAP = True
 # STOPPER_FIX (ledger B018, minotaur lane; off): castle_power's deep escape picks the unknown wand to zap at an
 # Elbereth-ignorer by what its possible types would do to THAT monster (resistances: sleep, cold/fire/shock, death vs
 # undead/demons/nonliving; the MR roll for sleep/polymorph/slow) net of the chance a ray bounces back onto us; no wand
@@ -1319,15 +1171,6 @@ TENGU_CORPSE_AGE = 25      # a tengu corpse older than this is left (CORPSE_MAX_
 # the trap door's Valley (0.691). Budgets 240 actions / 400 turns, HP >= 45%. Their ascension wish list is not
 # imported (it switched our teleport route off).
 CASTLE_TREASURY = True
-# CASTLE_PICK_MELEE (castle_cross._swap_for_fight; off pending a lift-suite A/B, research/deep_deaths.md castle section):
-# the castle's floating fights in the west maze (castle_cross._melee_adjacent, cl_route_step and _toward's blockers) wield
-# the 'best' melee weapon once after every dig, and the next dig's apply wields the pick again: two moves per interruption
-# out of a potion's 10-149 turns of lift (potion.c rn1(140, 10)). 30 of 227 castle arrivals got a lift (fx1/b3/mcb0/v2a/
-# tr0/p0); 11 of them swapped 19 times, e.g. fx1 pri-elf-cha-mal__601: a dwarf, a pyrolisk, a wood nymph and a housecat
-# interrupted its boulder dig at (-2,12) four times (30 turns), the minotaur came at +71 before the moat. With the flag
-# the swap follows DIG_TOOL_MELEE's rule (the best weapon must beat the pick by DIG_TOOL_MELEE_MARGIN in expected
-# damage: Excalibur and two-handers still come out). Sea-monster fights (castle_logic._wield_weapon, CFP_DUEL) unchanged.
-CASTLE_PICK_MELEE = False
 
 # ROBUST_FIXES2 (off, robustness-audit lane): stalls found by a census of the botlogs of 5456 unique dev games
 # (1047 of them since s23; $SCR/robust). Each piece acts only where the old code asserted or spun without a turn.
@@ -1503,17 +1346,6 @@ RAVEN_GAP_MAX = 12
 # cold (4%) says 'ice cubes' -- the flood-reducers that lift Medusa-3 in the harness (charging an empty wand of digging
 # 18 -> 34 of 49, a frost horn 21 -> 33 of 49). Small (~1 flood-reducer per 270 games), cheap.
 DEEP_WAND_TEST = False
-# MEDUSA_STRANDED_REROLL (research/deep_deaths.md): a flood can leave the digger on Medusa's '<' (or on a patch with no
-# square that can be dug: stairs, flooded or refused squares): _dig_max_wet() is None, 'stranded'. The reroll (climb,
-# dig down beside the '>' above, fall onto a fresh square of the arrival region) skipped Medusa-3 altogether, so the
-# dive stood on the '<' searching ("DIVE no progress in task 'descend': targets=[]") until the ravens wore it down: 6 of
-# 152 Medusa-3 arrivals in fx1/b3/mcb0/v2a/p0/tr0 (b3 arc-dwa-law-fem__609 430 turns, p0 pri-elf-cha-mal__207 1650,
-# b3 wiz-elf-cha-mal__603 340, fx1 bar-orc-cha-mal__601 850), 5 died there. And a climb off that '<' (the Elbereth
-# rest's retreat, KNOWN_ITEMS' climb) came back down the same stairs onto the same isolated square (b3
-# arc-dwa-law-fem__609 twice). With the flag a stranded dive rerolls on Medusa-3 too (up to MEDUSA_STRANDED_REROLLS
-# climbs), and after any climb off a stranded '<' the '>' above stays closed, so the dive digs back down.
-MEDUSA_STRANDED_REROLL = True
-MEDUSA_STRANDED_REROLLS = 6
 
 # ---------------------------------------------------------------------------------------------------------------
 # dive-audit lane (2026-09-30; ledger F092): a death-by-death review of cand-g's 53 fresh deaths at max depth 5-20
@@ -1574,176 +1406,6 @@ SHOP_DIG_AFTER = 300
 # soldier ant, 63 -> 0 HP (replay: 0.206 -> 0.507); 5 of 270 games were killed while hallucinating. The first version
 # also blocked it while stunned (1 in 4 per letter, ~7% whole): 30 stunned blocks in da-all2's 270 games, no gain.
 ELBERETH_FUTILE = True
-# ALTAR_NO_ENGRAVE (agent.can_engrave; research/wizard_deaths.md): engrave.c doengrave on an altar square writes nothing --
-# 'You make a motion towards the altar with your fingertip.' -- and calls pray.c altar_wrath: on a cross-aligned altar
-# 'Thou shalt pay, infidel!' and Luck -1 (rn2(20): -2), on our own -1 alignment and -1 Wis. With Luck < 0 every prayer is
-# 'too naughty' (pray.c can_pray: p_type 1, nothing fixed) until Luck times out. du1 wiz-orc-cha-mal__619 (and its wz0/c0
-# twins) stood on a Dlvl-3 altar for TC_ALTAR's BUC drop with a hostile large cat biting, wrote Elbereth there at T16755
-# ('Thou shalt pay, infidel!'), prayed at 6/48 HP three turns later and died praying. With the flag no Elbereth is
-# attempted on a known altar (the holds and fight2 then step off it or fight).
-ALTAR_NO_ENGRAVE = True
-# PYTHON_HOLD (research/deep_deaths.md): a python's AD_WRAP drowns us exactly like an eel's when it holds us from a pool
-# (mhitu.c AD_WRAP: u.ustuck and is_pool at the holder -> 'drowns you'), and Medusa-4's 14 random S often include
-# pythons that swim. ESCAPE_V2's hold escape (Elbereth at once: a scared holder lets go, monflee -> release) matched
-# only 'eel|kraken', so a held digger kept trying to walk ('You cannot escape from the python!', hack.c u.ustuck: 7.5%
-# per try): b3 ran-hum-cha-mal__603 three such tries, fx1 mon-hum-neu-mal__602, mcb0 mon-hum-cha-mal__204 -- 3 of 59
-# Medusa-4 deaths 'drowned in a pool of water by a python'. With the flag the escape takes pythons too.
-PYTHON_HOLD = True
-
-# FORCE_BOLT (fight_heur.force_bolt_actions, eL1fe's port of CleverShovel 0d1fb22): cast force bolt in fights
-FORCE_BOLT = True
-# FB_FOCUS (combat/fight_heur.force_bolt_actions; research/wizard_deaths.md): the Wizard meleed every Elbereth-ignorer
-# with its quarterstaff (d6) instead of casting force bolt (2d12, zap.c bhitm) at it, with its Pw full:
-#  - AT_FOCUS adds 10 to fight2's MELEE priority on an ignorer (@ humans and elves, were-creatures in @ form,
-#    minotaurs, lawful minions) next to us, 16 + 10 = 26, and the bolt at the same monster stays at 16 + 2 = 18;
-#  - on an Elbereth square force_bolt_actions returned nothing at all -- but casting erases no engraving (spell.c has
-#    no u_wipe_engr; melee does, uhitm.c u_wipe_engr(3)) and mon.c setmangry's hypocrisy needs a monster the engraving
-#    scares (onscary) or a peaceful.
-# In 412 deduped Wizard games (b3/wz0/c0/c1/du1/fx1) 52 deaths came after meleeing such a monster with Pw >= 5 and no
-# bolt at it in the last 25 turns -- Green/Grey/Woodland-elves, soldiers and officers at Dlvl 7-26 in the dig-dive's pit
-# (b3 wiz-elf-cha-mal__607: a lieutenant, Pw 83/83; wz0 wiz-elf-cha-mal__619: a lieutenant, 10 swings, Pw 81/81), and
-# human-form wererats/werejackals in the grind (wz0 wiz-gno-neu-mal__633, Pw 42/63). With the flag the bolt gets the
-# same AT_FOCUS bonus (it wins over the melee, 28 vs 26), and from an Elbereth square it is cast at a target the
-# engraving doesn't scare when nothing it scares (or a peaceful) stands on the bolt's path (bhit goes on past its target).
-FB_FOCUS = True
-# FB_SANITY: casts the game refuses or wastes. spell.c: stunned -> 'You are too impaired to cast a spell.' (no turn; the
-# bot retried until the turn-inactivity watchdog: 170 such panics in 9 Wizard logs), confused -> 'You fail to cast the
-# spell correctly.' every time (half the Pw lost), a forgotten spell ('(gone)' in the menu: every starting spell at
-# T20000, KEEN) only backfires -- wz0 wiz-hum-cha-mal__633 cast its forgotten force bolt ~2800 times in 500 turns,
-# confused and stunned itself and died to a rothe at T22764; 'Your arms are not free to cast!' (a welded two-hander)
-# typed the spell letter as a command ('a': apply) 7 times a turn (du1 wiz-gno-neu-mal__627). With the flag: no cast
-# while stunned or confused, '(gone)' spells are not known, a refusal blocks casting for FB_REFUSE_TURNS turns, and the
-# bolt's tail check looks FB_TAIL_REACH squares ahead (zap.c bhit: rn1(8, 6) squares, 3 more spent on each monster
-# hit, so nothing past 10 squares is reached once the target is hit) instead of 13.
-FB_SANITY = True
-FB_REFUSE_TURNS = 20
-FB_TAIL_REACH = 10
-# FB_RESERVE (0: off; A/B): Pw kept for real threats. From XL FB_RESERVE_XL and at HP >= FB_RESERVE_HP of max, no bolt at
-# a monster of makemon difficulty <= FB_RESERVE_DIFF that isn't faster than us (newts, lichens, grid bugs, jackals,
-# rats, kobolds, geckos...) while the bolt would leave less than min(FB_RESERVE, max Pw / 3); passive and exploding kinds
-# keep their bolts. 27 of 127 Wizard grind deaths meleed their killer (rothes, giant ants, dwarves, hill orcs) with
-# Pw < 5 left, and about a quarter of the grind's bolts in the final message windows went to such trivial targets
-# (wz0 wiz-elf-cha-mal__634: 2 giant rats and 2 newts bolted, then killed by a pony at Pw 4/63). A Wizard regains ~1 Pw
-# per 8 turns at XL 6 (allmain.c), so each wasted bolt is ~40 turns of regeneration.
-FB_RESERVE = 0
-FB_RESERVE_XL = 4
-FB_RESERVE_HP = 0.6
-FB_RESERVE_DIFF = 2
-# FB_SHOP_KNOWN (off; A/B): no bolt at all while any shopkeeper is in view was meant for shops we have not entered yet
-# (their stock is unknown); once every visible shopkeeper stands in a shop whose interior we know, the tail check's
-# dilated shop mask already keeps the bolt off the stock. du1 wiz-gno-neu-mal__626 meleed a giant bat to death in a shop
-# doorway, the bat in the corridor outside, Pw 71/71.
-FB_SHOP_KNOWN = False
-# FB_OVER_RAYS: in the grind (not diving), fight2 makes no ray-wand plan (cold, fire, lightning, magic missile, death)
-# while force bolt can be cast: the bolt hits one monster for 2d12 and never comes back, the ray's bounce model knows only
-# the squares we have seen (get_next_states treats unseen ones as walls; diagonal bounces are a TODO). Three Wizard grind
-# deaths on SELF_ZAP_FIX code zapped a known ray with Pw left: fx1 wiz-orc-cha-mal__606 at 26/26 HP out of a dark corridor
-# ('The bolt of lightning bounces!  The bolt of lightning hits you!', Pw 66/66), c0 wiz-gno-neu-mal__619 (fire, from a
-# doorway, 17/30 HP, Pw 12) and fx1 wiz-elf-cha-mal__606 (lightning at a giant ant, Pw 68). The dive keeps its rays
-# (soldier ants, KNOWN_ITEMS).
-FB_OVER_RAYS = True
-# UNSEEN_PET_GUARD (combat/fight_heur.unseen_pet_may_be_at, eL1fe 76b511c): no throw or shot whose line or overshoot
-# crosses an unseen square the pet could have reached since it was last on screen (UNSEEN_PET_TURNS ago at most).
-# A/B it: on the hub's private seeds eL1fe's v6 -> v7 (this guard + the Archeologist shop dig) scored -0.024 per
-# Ranger and -0.026 per Monk identity group, +0.025 per Priest group (research/code_mining_2.md C2)
-UNSEEN_PET_GUARD = True
-UNSEEN_PET_TURNS = 20
-# SPORE_TRAP_FIX (fight_heur.melee_monster_priority): the trapped-by-a-gas-spore melee only when its blast can't kill us
-SPORE_TRAP_FIX = True
-# PANIC_TILE_FIX (agent._note_repeated_panic): the loop breaker also forbids a square a monster keeps blocking
-PANIC_TILE_FIX = True
-# DIG_TOOL_MELEE (agent._keep_digging_tool_wielded): diving, fight with the wielded pick-axe/mattock unless the best weapon
-# beats it by this factor in expected damage per turn
-DIG_TOOL_MELEE = True
-# RAY_BOUNCE_FIX (known_items): known cold/fire wands need a free run behind the target, like the other rays
-RAY_BOUNCE_FIX = True
-# SELF_ZAP_FIX (combat/fight_heur.get_potential_wand_usages): fight2's wand plans charge SELF_ZAP_PENALTY (not 30) per
-# expected pass of the ray through us (Valkyries' cold excepted); RAY_CRIT_RUN (known_items._candidates): at critically
-# low HP a known sleep/lightning/magic-missile ray still needs this many free squares behind its target (0: off, the
-# old 'critical overrides the bounce check'). In 1023 games 10 shallow and 10 deep deaths came right after our own ray
-# hit us: fight2 wand plans 6 (all shallow, 3 on b3/wz0's near-HEAD code), KNOWN_ITEMS 7 (4 at critical HP), the MINO
-# guard / POWER escape 6 (deep), last-resort unknown wands 2 (not covered) (research/shallow_deaths.md)
-SELF_ZAP_FIX = True
-SELF_ZAP_PENALTY = 300
-RAY_CRIT_RUN = 0
-DIG_TOOL_MELEE_MARGIN = 1.3
-# DITCH_RETRY (dive_logic._ditch_pet_check): a pet ditch that ran out of time is retried (DITCH_PET_TRIES)
-DITCH_RETRY = True
-# ELBERETH_REWRITE_FIX (dive_logic.dig_with_tool, _elbereth_before_digging_escape): waking from a faint mid-dig, a
-# garbled Elbereth is rewritten before the pick goes on (w1 wiz-gno-neu-mal s15 read '_lbcreth' after a faint on Dlvl 23,
-# re-applied the pick at once and was killed by a wood golem in the next faint); the per-square cap
-# (ELBERETH_TRIES_ESCAPE) counts only the writes since the engraving last read back whole, so a long dig's wipes don't
-# use it up
-ELBERETH_REWRITE_FIX = True
-# the grind's level table per role name (global_logic._grind_level; {}: Dlvl 1 throughout), overriding GRIND_LEVELS.
-# eL1fe (cfc38282): with working force bolt the Dlvl-3 grind pays for Wizards (+12.6 on 48 paired games); Rogues keep
-# Dlvl 1 (+3.3/+4.1). Their Priest (-1.9/-2.7) and Knight (+2.8/-1.4) numbers showed no gain and Tourists were not
-# measured on this engine, so those keep e29eb82's Dlvl-1 grind too: only the Wizard leaves the list.
-# Knights on the default (deep) grind: -0.020 +- 0.023 over 160 paired held-out games (kn0/kn1), though every engine
-# with the default grind scores 0.29-0.30 on the hub's private Knight seeds against e29eb82's 0.227 -- kept on Dlvl 1.
-ROLE_GRIND_LEVELS = {'Rogue': {}, 'Knight': {}, 'Tourist': {}, 'Priest': {}}
-
-# DURABLE_ELBERETH (agent.engrave_durable, dive_logic.faint_guard): the faint guard's hold engraves its Elbereth with a
-# spare blade (three pieces, 8 helpless turns, the blade ends 3 points duller) or an athame (one piece, no dulling)
-# instead of writing it in the dust, once per level, and later holds on that level walk back to it (DURABLE_WALK steps
-# at most). Dust Elbereth garbles 28% of writes (engrave.c: 1 letter in 25) and smudges ~1 turn in 85 (allmain.c
-# u_wipe_engr), and a smudge during a faint is a free kill: 55 of 1024 b3/fx1 games died in a grind hold, 25 of them on a
-# garbled or smudged Elbereth and many more killed while fainted. ENGRAVE text has no typos and loses a letter to a
-# wipe only ~1 time in 13-26 (wipe_engr_at). Off pending an A/B.
-DURABLE_ELBERETH = False
-DURABLE_CLEAR = 5                   # no hostile within this many squares when an engraving starts
-DURABLE_WALK = 15                   # BFS steps a hold walks to the level's engraved Elbereth
-
-# RING_MODULE (item/ring_amulet_logic.py, item/scroll_identify.py; tuning in item/ring_amulet_config.py): the ring/amulet
-# module of CleverShovel/nethacker@9dc0822 with the fixes of 29ab0a7 (identify-menu paging, harm-gated reading). It wears
-# identified rings/amulets that always help (slow digestion, free action, poison resistance, gain Str/Con; life saving,
-# versus poison), the combat-only ones (protection, increase accuracy/damage, reflection) only while a hostile is within
-# 6 squares, sheds them when Hungry, and reads unknown scrolls at a safe moment to identify carried rings/amulets.
-# Evidence (verified tier, private seeds, the same 15 games per identity): 9dc0822 = e29eb82 + this module beat e29eb82 on
-# every Wizard identity both are listed for (wiz-gno-neu 0.334 vs 0.303/0.281, wiz-hum-neu 0.298 vs 0.257, wiz-hum-cha
-# 0.243 vs 0.210 and 0.326 vs <=0.223) -- a Wizard starts with two identified rings -- and lost ~0.01 per identity
-# elsewhere (0.2836 vs 0.2864 overall); CleverShovel's own public-seed panels: negative on most non-Wizard identities.
-# Measured on e29eb82's Wizard (Dlvl-1 grind, no force bolt), not on this engine's: A/B it here.
-RING_MODULE = False                 # master switch (A/B pending: on for Wizards only)
-RING_WEAR_ROLES = ('Wizard',)       # role names for the wearing strategies below (None: every role)
-RING_WEAR_IDENTIFIED = True         # the always-wear list (ring_amulet_config.ALWAYS_WEAR_*)
-RING_COMBAT_ONLY_WEAR = True        # protection / increase accuracy / increase damage / reflection near hostiles only
-RING_NUTRITION_REMOVE = True        # take the module's rings/amulets off when Hungry (never slow digestion), on when fed
-RING_STARTING_WEAR = False          # every starting ring, kept on (CleverShovel: -0.024 on four wizard leaders)
-RING_AMULET_TRIAL = False           # try unidentified amulets on (CleverShovel: never better on five leaders)
-RING_SCROLL_IDENTIFY = True         # read unknown scrolls at a safe moment to identify carried rings/amulets
-RING_SCROLL_ROLES = ('Wizard',)     # role names for the scroll reading (None: every role)
-
-# AT_THREAT_AVOID (dive_logic._at_hold): no new dig pit while an Elbereth-ignoring meleer -- an elf, a soldier or another
-# @, a minotaur -- is coming for us. Every attack, hit or miss, stops the dig occupation before its next turn (mhitu.c
-# stop_occupation; allmain.c also stops it for any unscared hostile next to us), and a pick-axe needs ~5 dig turns to the
-# pit and ~20 more to the hole (dig.c dig(): effort 10+rn2(5) a turn, the pit past 50, a fresh start in it, the hole past
-# 250; a dwarf's effort doubles each turn, ~8 turns in all). In the pit we fight at -3 to-hit (uhitm.c: u.utrap) and
-# PIT_AWARE_FIGHT keeps us there. 9% of the dives ended that way at Dlvl 9-24 (Woodland-/Green-/Grey-elves, soldiers and
-# their officers; Archeologists 15%), most within ~15 turns of landing. With a hostile @ within AT_THREAT_RADIUS (in view,
-# or seen there within AT_THREAT_MEMORY turns): a known wand of digging holes the floor at once (also one WAND_RESERVE
-# keeps for Medusa, below AT_THREAT_WAND_XL or at half HP); else, if it is too far away to reach us before the pit
-# (AT_THREAT_NEAR), no pit is started -- fight2 fights it on level ground and the dig waits until it is dead or gone.
-# One that stays no closer for AT_THREAT_STILL turns in view (asleep in its barracks, stuck) doesn't hold the dig, nor
-# does anything after AT_THREAT_MAX_HOLD turns of holding on a level. Above Medusa's level only (her level and the mazes
-# below keep their own plans); a dig already in our pit goes on.
-AT_THREAT_AVOID = False
-AT_THREAT_RADIUS = 8                # distance (BFS steps, else Chebyshev) of an @ that holds a new pit
-AT_THREAT_RADIUS_DWARF = 7          # a dwarf's whole hole takes ~8 actions (apply, 2 digs to the pit, apply, 4 digs)
-AT_THREAT_NEAR = 4                  # an @ closer than this is next to us before any pit (~5 actions: apply + 4-5 digs;
-AT_THREAT_NEAR_DWARF = 3            # a dwarf's 3): the dig starts as usual and fight2 meets it with the effort kept
-AT_THREAT_MEMORY = 10               # turns an @ seen within the radius keeps holding once out of view
-AT_THREAT_STILL = 4                 # turns an @ in view may stay no closer before we dig all the same
-AT_THREAT_MAX_HOLD = 40             # holding turns per level, at most
-AT_THREAT_WAND_XL = 10              # the kept wand of digging is spent on an @ below this XL (or at half HP)
-
-# INV_FULL_LIST (off; port of vkurenkov 4921bc3, research/competitor_scan2.md N2): item/inventory_items.InventoryItems.update()
-# checks a carried container by APPLYING it (game steps) in the middle of parsing the inventory (letter order). A strategy change
-# (AgentChangeStrategy) or a panic raised inside that check left the item list cut at the container while _previous_inv_strs was
-# already current, so every later update kept the cut list until the inventory text changed (vk: the bot lost the Castle's wand
-# of wishing for 610 turns). On: the exception is held, the rest of the list is parsed, then the exception is raised (same game
-# steps, a complete list).
-INV_FULL_LIST = False
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

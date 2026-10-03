@@ -70,3 +70,8 @@
   (`roles.attributes_identity`, so the per-role config applies even when the welcome line is missed), and the Tourist
   engine `pf_dtad7a` (DT6A/nethacker@ad7a864) routed for `tou`. The `RING_MODULE`/`MEDUSA_HOP` module code is
   byte-identical to daglar's, so this reproduces the leader's behaviour exactly, with v4's extra fixes on top.
+
+- **ports3** (unrouted specialists for dev audits, `research/competitor_scan2.md` N4-N6; `bot.SPECIALISTS` unchanged):
+  `pf_cs911` (CleverShovel 911c949 pf_base, their wiz-hum-neu engine), `pf_dt284` (DT6A f284bd2 jawfish, their
+  hea-hum/tou engine), `pf_s25p8m` (pf_s25p8 + daglar 50fa3c4's MINES_TOOL_TRIP line in `use_mines`). nhbot:
+  `INV_FULL_LIST` (off; vkurenkov 4921bc3): a container check that raises mid-parse no longer leaves the item list cut.
