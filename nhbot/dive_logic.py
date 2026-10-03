@@ -811,6 +811,13 @@ CAMP_FIX = True
 # master switch for the hunt mechanics above (individual flags stay for ablations)
 # ON (train 2): pick-camp1 45 games 0.393 vs 0.348, tool dives 85% vs 74%, no-tool dives 9 -> 5
 HUNT_V2 = True
+# TOOL_LOG (off; logging only, no play change): 'TOOL got/lost <item> (...)' whenever the best digging tool in the
+# pack changes (checked every TOOL_LOG_EVERY turns), and 'DIVE start tool: ...' when the dive begins. Without it the
+# dev logs show a tool only once it digs or comes off a checked pile: 203 of 707 non-Archeologist dives that began
+# with a tool in v10-equivalent runs (b10/wb1/wr1/au_*) had no record of where or when it was obtained
+# (research/digging_tool.md).
+TOOL_LOG = False
+TOOL_LOG_EVERY = 10
 
 
 def _apply_dev_overrides():
@@ -1031,6 +1038,7 @@ class DiveLogic:
         self._climb_start = {}             # level key -> turn we began climbing back from it for the branch
         self._climb_count = {}             # CLIMB_FIX: (level key, (y, x)) -> times the branch climb took that '<'
         self._camp_start = None            # MINES_CAMP: turn the camp began
+        self._tool_seen = None             # TOOL_LOG: (turn checked, text of the best digging tool or None)
         self._camp_over = False
         self._camp_dir = 1                 # sweep direction: +1 down, -1 up
         self._camp_visit = None            # (level key, turn we arrived) of the current camp visit
@@ -1276,6 +1284,8 @@ class DiveLogic:
         self._last_pos = (key, pos)
         self.castle.note_level()
         self._note_digging_tools(key, pos)
+        if TOOL_LOG:
+            self._log_tool_change(turn)
         if utils.any_in(agent.glyphs, G.PETS):
             self.pet_seen[key] = turn
         if 'You murderer!' in agent.message and self._murder_turn != turn:
@@ -1396,6 +1406,28 @@ class DiveLogic:
 
     _DWARF_KILLED = re.compile(r"You kill (the|a|an) (poor )?dwarf( lord| king)?!")
     _TOOL_PICKED_UP = re.compile(r"\b[a-zA-Z] - (an?|\d+) [^.]*(pick-axe|dwarvish mattock)")
+
+    def _log_tool_change(self, turn):
+        """TOOL_LOG: log when the best digging tool in the pack appears, changes or goes (every TOOL_LOG_EVERY turns).
+        Read-only: the inventory is only looked at, never updated."""
+        seen = self._tool_seen
+        if seen is not None and 0 <= turn - seen[0] < TOOL_LOG_EVERY:
+            return
+        try:
+            tool = self.best_digging_tool(self.agent.inventory.items)
+        except Exception:
+            return
+        text = tool.text if tool is not None else None
+        before = seen[1] if seen is not None else None
+        self._tool_seen = (turn, text)
+        if text == before:
+            return
+        bl = self.agent.blstats
+        where = f'XL {bl.experience_level}, Dlvl {bl.depth}, {"dive" if self.diving else "tour"}'
+        if text is None:
+            self.agent.log(f'TOOL lost {before!r} ({where})')
+        else:
+            self.agent.log(f'TOOL got {text!r} ({where}, mines={self.agent.current_level().dungeon_number == Level.GNOMISH_MINES})')
 
     def _note_digging_tools(self, key, pos):
         """Remember where pick-axes lie. The tour picks them up and drops them again for lighter loot
@@ -1610,6 +1642,10 @@ class DiveLogic:
             agent.log(f'DIVE phase starts (milestone {gl.milestone.name}{tag})')
             self.diving = True
             self.dive_start_turn = agent.blstats.time
+            if TOOL_LOG:
+                tool = self.digging_tool()
+                agent.log(f'DIVE start tool: {tool.text if tool is not None else None!r} '
+                          f'(XL {xl}, Dlvl {agent.blstats.depth})')
             self.rescue = rescue or late_rescue
             # the tour handled the Mines; from here it's the main dungeon. A rescue used to take the Mines
             # route, but none of 21 rescue dives (abP/abPF) ever reached the Mines: they searched Dlvl 2
