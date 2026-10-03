@@ -310,8 +310,8 @@ class Character:
 
     def _track_poison(self, msg):
         if 'You feel healthy' in msg or 'You feel especially healthy' in msg:
-            if not self.poison_res_gained:
-                self.agent.log('INTRINSIC poison resistance')
+            if not self.poison_res_gained and (jf_config.CORPSE_WIDEN or jf_config.FOOD_LOG):
+                self.agent.log('INTRINSIC poison resistance')   # (integ: flag-off logs stay v10c's)
             self.poison_res_gained = True
             self.poison_res_lost = False
         if 'You feel a little sick!' in msg:
