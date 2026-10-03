@@ -473,6 +473,8 @@ class Agent:
         power_route.note_message(self)
         if jf_config.PET_HUNGER_FIX:
             self._note_pet_hunger()
+        if jf_config.FOOD_LOG:
+            self._food_log_message()
         if jf_config.GENOCIDE_POLICY or jf_config.HORN_SCARE:
             # opp-items: genocide outcomes ('Wiped out' proves a stack not cursed), what an unknown horn turned out to be
             from . import opp_items
@@ -1055,6 +1057,8 @@ class Agent:
 
         self._update_level_items()
         self._update_level_shops()
+        if jf_config.FOOD_LOG:
+            self._food_log_shops(level)
         self._update_level_corpses()
         # (the dive only: in the spawn-limited grind the loop costs steps, not score, and a change there reshuffles
         # every game)
@@ -3074,6 +3078,10 @@ class Agent:
             assert self.melee_attack(*list(zip(*mask.nonzero()))[0])
 
     def _is_corpse_editable(self, monster_id, age_turn):
+        return self._corpse_refusal(monster_id, age_turn) is None
+
+    def _corpse_refusal(self, monster_id, age_turn):
+        """None if the corpse is food for us, else why not (FOOD_LOG reports the reason)."""
         permonst = MON.permonst(monster_id)
 
         # hypothesis: starving (Weak or worse) with HP to spare, poison (-1d4 Str, -1d15 HP) or acid
@@ -3087,38 +3095,49 @@ class Agent:
             self.blstats.hitpoints >= max(jf_config.POISON_EATS_MIN_HP, 0.6 * self.blstats.max_hitpoints) and \
             getattr(permonst, 'cnutrit', 0) >= 50
 
+        # CORPSE_WIDEN: eat.c eatcorpse -- with Poison_resistance a poisonous corpse is only 'You seem unaffected by
+        # the poison.' (Healers, Barbarians, orcs, or gained from a corpse); orcs alone were trusted before
+        if jf_config.CORPSE_WIDEN:
+            poison_res = self.character.poison_resistant()
+        else:
+            poison_res = self.character.race == Character.ORC
+
         # TODO: read intrinsics
-        if self.character.race != Character.ORC and permonst.mflags1 & MON.M1_POIS != 0 and not starving and \
+        if not poison_res and permonst.mflags1 & MON.M1_POIS != 0 and not starving and \
                 not poison_ok:
-            return False
+            return 'poisonous'
+
+        # zombies and mummies leave corpses pre-aged by 100 turns (mon.c make_corpse): never 'fresh'
+        if jf_config.CORPSE_WIDEN and ord(permonst.mlet) in (MON.S_ZOMBIE, MON.S_MUMMY):
+            return 'undead'
 
         # TODO: read intrinsics
         if permonst.mflags1 & MON.M1_ACID != 0 and not starving:
-            return False
+            return 'acidic'
 
         if permonst.mflags2 & MON.M2_WERE != 0:
-            return False
+            return 'were'
 
         # polymorph
         if monster_id in [MON.id_from_name(name) for name in ['chameleon', 'doppelganger', 'sandestin']]:
-            return False
+            return 'polymorph'
 
         # remove random intrinsic
         if monster_id in [MON.id_from_name(name) for name in ['disenchanter']]:
-            return False
+            return 'disenchanter'
 
         # hallucination
         if monster_id in [MON.id_from_name(name) for name in ['abbot', 'violet fungus', 'yellow mold']]:
-            return False
+            return 'hallucination'
 
         # stun
         if monster_id in [MON.id_from_name(name) for name in ['bat', 'giant bat']]:
-            return False
+            return 'stun'
 
         # aggravate monster
         if monster_id in [MON.id_from_name(name) for name in ['dog', 'little dog', 'large dog',
                                                               'kitten', 'housecat', 'large cat']]:
-            return False
+            return 'aggravate'
 
         # teleportitis
         # if ord(permonst.mlet) in [MON.S_LEPRECHAUN, MON.S_NYMPH]:
@@ -3126,11 +3145,11 @@ class Agent:
 
         # petrification
         if ord(permonst.mlet) == MON.S_COCKATRICE or monster_id == MON.id_from_name('Medusa'):
-            return False
+            return 'petrify'
 
         # temporary prevents movement
         if ord(permonst.mlet) == MON.S_MIMIC:
-            return False
+            return 'mimic'
 
         # cannibalism
         race_flag = {
@@ -3143,21 +3162,21 @@ class Agent:
         if self.character.role == Character.CAVEMAN:
             race_flag = 0
         if permonst.mflags2 & race_flag:
-            return False
+            return 'cannibal'
 
         # a lycanthrope eating its own were family is a cannibal too (eat.c maybe_cannibal: were_beastie(pm)
         # == u.ulycn): Luck -2..-5 and permanent aggravate monster. Public s13 ate three jackal corpses right
         # after a werejackal bite and its next prayer failed ('Thou art arrogant'), so did jf25 s10's
         if jf_config.LYCAN_FIXES and permonst.mname in self.character.were_family():
-            return False
+            return 'were-family'
 
         # corpse aging: eat.c taints at rotted = age / (10 + rn2(20)) > 5 (a cursed corpse gets +2) and
         # "rotten" (vomiting, passing out) from rotted > 3 -- 30 turns keeps clear of both
         if self.blstats.time - age_turn >= jf_config.CORPSE_MAX_AGE and \
                 monster_id not in [MON.id_from_name('lizard'), MON.id_from_name('lichen')]:
-            return False
+            return 'old' if age_turn > -10000 else 'age-unknown'
 
-        return True
+        return None
 
     RESERVE_CORPSE_IDS = frozenset(MON.id_from_name(n) for n in ('lichen', 'lizard'))
 
@@ -3231,6 +3250,51 @@ class Agent:
         elif self._pet_starving_until >= bl.time and self._PET_EATS.search(msg):
             self._pet_starving_until = -1
 
+    def _food_log_refusal(self, level, y, x, monster_id, corpse_age):
+        """FOOD_LOG: one line per refused corpse kind and square (we stand on it)."""
+        seen = self.__dict__.setdefault('_food_refused_logged', set())
+        key = (level.key(), int(y), int(x), int(monster_id))
+        if key in seen:
+            return
+        seen.add(key)
+        try:
+            why = self._corpse_refusal(monster_id, corpse_age)
+            name = MON.permonst(monster_id).mname
+        except Exception:
+            return
+        self.log(f'FOOD refuse {name} reason={why} age={self.blstats.time - corpse_age} '
+                 f'hunger={self.blstats.hunger_state} nutr={getattr(MON.permonst(monster_id), "cnutrit", 0)}')
+
+    _PET_MEAL = re.compile(r"\b(kitten|housecat|large cat|little dog|dog|large dog|pony|horse|warhorse) eats "
+                           r"(?:an? |the |some )?(.+?)[.!]")
+
+    def _food_log_message(self):
+        """FOOD_LOG: the pet's meals."""
+        msg = self.message or ''
+        if 'eats' not in msg:
+            return
+        bl = getattr(self, 'blstats', None)
+        key = (getattr(bl, 'time', None), msg)
+        if key == getattr(self, '_food_pet_last', None):
+            return
+        self._food_pet_last = key
+        for pet, what in self._PET_MEAL.findall(msg):
+            self.log(f'FOOD pet eats {what} ({pet})')
+
+    def _food_log_shops(self, level):
+        """FOOD_LOG: a shop first seen on a level, with our gold and carried nutrition."""
+        seen = self.__dict__.setdefault('_food_shops_logged', set())
+        key = level.key()
+        if key in seen or not level.shop.any():
+            return
+        seen.add(key)
+        try:
+            types_ = sorted({int(t) for t in level.shop_type[level.shop]})
+            self.log(f'FOOD shop seen dlvl={self.blstats.depth} key={key} types={types_} gold={self.blstats.gold} '
+                     f'carried={self.inventory.carried_nutrition()} xl={self.blstats.experience_level}')
+        except Exception:
+            pass
+
     @utils.debug_log('eat_corpses_from_ground')
     @Strategy.wrap
     def eat_corpses_from_ground(self, only_below_me=True, max_dist=None, max_age=None):
@@ -3254,6 +3318,8 @@ class Agent:
                     continue
                 if self._is_corpse_editable(monster_id, corpse_age):
                     to_eat.append((y, x, monster_id))
+                elif jf_config.FOOD_LOG:
+                    self._food_log_refusal(level, y, x, monster_id, corpse_age)
 
         else:
             for (y, x), corpse_mapping in level.corpses_to_eat.items():
@@ -3300,6 +3366,10 @@ class Agent:
                         if not yielded:
                             yielded = True
                             yield True
+                        if jf_config.FOOD_LOG:
+                            self.log(f'FOOD eat corpse {MON.permonst(monster_id).mname} '
+                                     f'age={self.blstats.time - corpse_age} hunger={self.blstats.hunger_state} '
+                                     f'nutr={getattr(MON.permonst(monster_id), "cnutrit", 0)}')
                         self.inventory.eat(item)
 
             if not yielded:
@@ -3653,6 +3723,8 @@ class Agent:
             yield False
         for item in self.edible_carried_food():
             yield True
+            if jf_config.FOOD_LOG:
+                self.log(f'FOOD eat inv {item.text!r} hunger={self.blstats.hunger_state} diving={diving}')
             self.inventory.eat(item)
             return
         yield False

@@ -296,6 +296,27 @@ class Character:
         # intrinsic telepathy from a floating eye corpse (eat.c cpostfx), lost to sit.c attrcurse: read by
         # jf_config.FEYE_TELE (an extrinsic source -- helm of telepathy, amulet of ESP -- prints nothing and is not seen)
         self.telepathic = False
+        # CORPSE_WIDEN: poison resistance from a corpse (eat.c cpostfx: 'You feel healthy.' / 'especially healthy.'),
+        # and its loss to sit.c attrcurse ('You feel a little sick!' strips every intrinsic source)
+        self.poison_res_gained = False
+        self.poison_res_lost = False
+
+    def poison_resistant(self):
+        """Intrinsic poison resistance: Healers and Barbarians (attrib.c, XL 1), orcs (race, XL 1), or gained from a
+        corpse; none after attrcurse took it."""
+        if self.poison_res_lost:
+            return False
+        return self.poison_res_gained or self.role in (self.HEALER, self.BARBARIAN) or self.race == self.ORC
+
+    def _track_poison(self, msg):
+        if 'You feel healthy' in msg or 'You feel especially healthy' in msg:
+            if not self.poison_res_gained:
+                self.agent.log('INTRINSIC poison resistance')
+            self.poison_res_gained = True
+            self.poison_res_lost = False
+        if 'You feel a little sick!' in msg:
+            self.poison_res_lost = True
+            self.poison_res_gained = False
 
     def _track_telepathy(self, msg):
         # eat.c cpostfx TELEPAT: 'You feel a strange mental acuity.' ('in touch with the cosmos.' hallucinating);
@@ -331,6 +352,7 @@ class Character:
                 self.is_lycanthrope = False
             self._track_teleport(self.agent.message)
             self._track_telepathy(self.agent.message)
+            self._track_poison(self.agent.message)
             return
         # every message since the last update: infections and changes happen inside atomic operations
         # (fights, searches), and the old check of the last message alone missed some of them
@@ -342,6 +364,7 @@ class Character:
         msg = ' '.join(history[start:] + [self.agent.message])
         self._track_teleport(msg)
         self._track_telepathy(msg)
+        self._track_poison(msg)
         # infected while fainted or asleep the message is 'You dream that you feel feverish.' (75 of 591
         # infections in the dev runs): the old exact match never saw it, so no cure prayer came and the
         # bot went on eating jackal corpses (jf25 s10: 'You cannibal!', Luck -2..-5, next prayer failed)
