@@ -1,8 +1,10 @@
 {
   "schema": "nethackers.solution/v1",
-  "name": "zarutskiysy-v11pub",
+  "name": "zarutskiysy-v12pub",
   "root": ".",
   "parents": [
+    "github.com/zarutskiysy/nethack@9c1cc902b6d9d88e6a14e0c9e5dc7494d9882bcd",
+    "github.com/zarutskiysy/nethack@00cf417f05ec9c20846b848cd70243af67695c54",
     "github.com/zarutskiysy/nethack@14a3bbd871061d63bda57da6c82af91f46959d21",
     "github.com/zarutskiysy/nethack@94c4c1cd21c51f9feec0eaabd9c63831a8ee3316",
     "github.com/zarutskiysy/nethack@bb7def3548dcb618066c2c92b8bc3335631aaee1",

@@ -30,28 +30,29 @@ SPECIALISTS = {
     "arc-hum-neu": "adapter_pf_s25p8",        # e29/pf_s25p 0.360/0.380 vs nhbot 0.31-0.33
     "bar-orc": "adapter_pf_s25p8",            # e29/pf_s25p8 0.45-0.48 vs nhbot 0.36-0.41
     "wiz-hum-neu": "adapter_pf_s25p8",        # dev 90 seeds: pf_s25p8 0.252 > nhbot 0.214 > pf_vk_s25 0.153; verified e29 ~0.25 vs pf_vk_s25 0.125
+    # v12pub: v11pub + v2/v3 sources (LEGACY below) + v4's config on arc-dwa-law-mal / arc-hum-law-fem (tools/mkpub12.py)
     # v11pub (PUBLIC-board variant): per identity the best public-seed setup among v10c / v7 / v9p2 / v4 (tools/mkpub.py)
-    "arc-dwa-law-fem": "",
+    "arc-dwa-law-fem": "adapter_nhbot_v3",
     "arc-dwa-law-mal": "",
     "arc-gno-neu-fem": "adapter_pf_v36",
     "arc-gno-neu-mal": "adapter_pf_v36",
     "arc-hum-law-fem": "",
-    "arc-hum-law-mal": "",
-    "arc-hum-neu-fem": "",
-    "arc-hum-neu-mal": "adapter_pf_s25p8",
-    "bar-hum-cha-fem": "",
-    "bar-hum-cha-mal": "",
+    "arc-hum-law-mal": "adapter_nhbot_v3",
+    "arc-hum-neu-fem": "adapter_nhbot_v3",
+    "arc-hum-neu-mal": "adapter_nhbot_v3",
+    "bar-hum-cha-fem": "adapter_nhbot_v2",
+    "bar-hum-cha-mal": "adapter_nhbot_v2",
     "bar-hum-neu-fem": "",
     "bar-hum-neu-mal": "adapter_pf_vk_s25",
     "bar-orc-cha-fem": "",
     "bar-orc-cha-mal": "",
-    "cav-dwa-law-fem": "",
-    "cav-dwa-law-mal": "",
+    "cav-dwa-law-fem": "adapter_nhbot_v2",
+    "cav-dwa-law-mal": "adapter_nhbot_v2",
     "cav-gno-neu-fem": "",
     "cav-gno-neu-mal": "",
-    "cav-hum-law-fem": "",
-    "cav-hum-law-mal": "",
-    "cav-hum-neu-fem": "",
+    "cav-hum-law-fem": "adapter_nhbot_v3",
+    "cav-hum-law-mal": "adapter_nhbot_v3",
+    "cav-hum-neu-fem": "adapter_nhbot_v2",
     "cav-hum-neu-mal": "",
     "hea-gno-neu-fem": "adapter_pf_vlom_9ef4063",
     "hea-gno-neu-mal": "adapter_pf_vlom_9ef4063",
@@ -61,16 +62,16 @@ SPECIALISTS = {
     "kni-hum-law-mal": "adapter_pf_s25p8",
     "mon-hum-cha-fem": "",
     "mon-hum-cha-mal": "",
-    "mon-hum-law-fem": "",
-    "mon-hum-law-mal": "",
-    "mon-hum-neu-fem": "",
-    "mon-hum-neu-mal": "",
+    "mon-hum-law-fem": "adapter_nhbot_v2",
+    "mon-hum-law-mal": "adapter_nhbot_v2",
+    "mon-hum-neu-fem": "adapter_nhbot_v3",
+    "mon-hum-neu-mal": "adapter_nhbot_v3",
     "pri-elf-cha-fem": "",
-    "pri-elf-cha-mal": "",
-    "pri-hum-cha-fem": "adapter_pf_pa_5c1186c",
-    "pri-hum-cha-mal": "adapter_pf_pa_5c1186c",
-    "pri-hum-law-fem": "",
-    "pri-hum-law-mal": "",
+    "pri-elf-cha-mal": "adapter_nhbot_v3",
+    "pri-hum-cha-fem": "adapter_nhbot_v3",
+    "pri-hum-cha-mal": "adapter_nhbot_v3",
+    "pri-hum-law-fem": "adapter_pf_pa",
+    "pri-hum-law-mal": "adapter_nhbot_v3",
     "pri-hum-neu-fem": "",
     "pri-hum-neu-mal": "",
     "ran-elf-cha-fem": "adapter_pf_s25p8",
@@ -93,11 +94,11 @@ SPECIALISTS = {
     "tou-hum-neu-mal": "adapter_pf_dtad7a",
     "val-dwa-law-fem": "adapter_pf_vk_s23",
     "val-hum-law-fem": "",
-    "val-hum-neu-fem": "",
+    "val-hum-neu-fem": "adapter_nhbot_v3",
     "wiz-elf-cha-fem": "",
     "wiz-elf-cha-mal": "",
-    "wiz-gno-neu-fem": "",
-    "wiz-gno-neu-mal": "",
+    "wiz-gno-neu-fem": "adapter_nhbot_v2",
+    "wiz-gno-neu-mal": "adapter_nhbot_v2",
     "wiz-hum-cha-fem": "",
     "wiz-hum-cha-mal": "",
     "wiz-hum-neu-fem": "",
@@ -105,6 +106,62 @@ SPECIALISTS = {
     "wiz-orc-cha-fem": "",
     "wiz-orc-cha-mal": "",
 }
+
+# v12pub (PUBLIC-board variant): identities whose best public score came from v2 (9c1cc90) or v3 (71335bf), programs
+# whose nhbot differs from today's. They play a verbatim copy of that program's nhbot (nhbot_v2 / nhbot_v3: only the
+# package name in the import lines changed) with its defaults (v2/v3 had empty OVERRIDES, so roles.apply is skipped),
+# routed exactly as that program routed them: v2/v3 had no ^X probe, so their table is applied to the identity read
+# from the first observation (role-only when the welcome line is missed -> the program's nhbot). The probe itself is
+# game-neutral (153 public episodes replay turn-for-turn with exactly 2 more steps).
+LEGACY = {
+    "arc-dwa-law-fem": "v3",
+    "arc-hum-law-mal": "v3",
+    "arc-hum-neu-fem": "v3",
+    "arc-hum-neu-mal": "v3",
+    "bar-hum-cha-fem": "v2",
+    "bar-hum-cha-mal": "v2",
+    "cav-dwa-law-fem": "v2",
+    "cav-dwa-law-mal": "v2",
+    "cav-hum-law-fem": "v3",
+    "cav-hum-law-mal": "v3",
+    "cav-hum-neu-fem": "v2",
+    "mon-hum-law-fem": "v2",
+    "mon-hum-law-mal": "v2",
+    "mon-hum-neu-fem": "v3",
+    "mon-hum-neu-mal": "v3",
+    "pri-elf-cha-mal": "v3",
+    "pri-hum-cha-fem": "v3",
+    "pri-hum-cha-mal": "v3",
+    "pri-hum-law-fem": "v2",
+    "pri-hum-law-mal": "v3",
+    "val-hum-neu-fem": "v3",
+    "wiz-gno-neu-fem": "v2",
+    "wiz-gno-neu-mal": "v2",
+}
+_LEGACY_TABLES = {
+    "v2": ({"hea-gno": "adapter_pf_hg", "hea-hum": "adapter_pf_hh", "pri-hum": "adapter_pf_pa", "sam": "adapter_pf_v35"},
+           "adapter_nhbot_v2"),
+    "v3": ({"hea-gno": "adapter_pf_hg", "hea-hum": "adapter_pf_hh", "sam": "adapter_pf_v35"}, "adapter_nhbot_v3"),
+}
+
+
+def _lookup(table, ident):
+    if not ident:
+        return None
+    for prefix in sorted(table, key=len, reverse=True):
+        if ident == prefix or ident.startswith(prefix + "-"):
+            return table[prefix] or None
+    return None
+
+
+def route(ident, pre_ident):
+    """(engine module, apply roles config?) for the identity; pre_ident = the identity read before any ^X probe."""
+    src = LEGACY.get(ident) if ident and not os.environ.get("NHBOT_ROUTE") else None
+    if src is not None:
+        table, default = _LEGACY_TABLES[src]
+        return _lookup(table, pre_ident) or default, False
+    module_name = _specialist(ident) or "adapter"
+    return module_name, module_name == "adapter"
 
 
 def _specialist(ident):
@@ -142,12 +199,13 @@ class Bot:
         # a role-only identity means the welcome line was not seen: ask ^X before choosing the engine
         self._probe = 0 if ident is None or ident.count("-") != 3 else None
         self._probe_ident = ident
+        self._pre_ident = ident
         if self._probe is None:
             self._start(initial_observation, ident)
 
     def _start(self, initial_observation, ident):
-        module_name = _specialist(ident) or "adapter"
-        if module_name == "adapter":
+        module_name, apply_roles = route(ident, getattr(self, "_pre_ident", ident))
+        if apply_roles:
             try:
                 roles.apply(ident)
             except Exception:  # noqa: BLE001 -- a bad override must never cost the episode

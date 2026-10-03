@@ -13,6 +13,10 @@
   Cavemen on the Dlvl-1 grind (+0.073 +- 0.022, 120 pairs).
 - **v10c**: neutral human Wizards on pf_s25p8 instead of pf_vk_s25 (dev held-out: 0.252 vs 0.153 over 90 seeds; the
   verified tier agrees).
+- **v12pub** (public board only): v11pub plus, per identity, the best public-seed setup of v2 (9c1cc90) and v3
+  (71335bf) -- 23 identities play verbatim copies of those programs' engines (`nhbot_v2`, `nhbot_v3`: only the package
+  name in the import lines changed) routed exactly as those programs routed them (`bot.LEGACY`) -- and v4's config
+  (the nhbot defaults) on arc-dwa-law-mal / arc-hum-law-fem. Not meant for the verified tier.
 - **v11pub** (public board only): per identity the best public-seed setup among v10c, v7, v9p2 and v4 (same nhbot
   code; tools/mkpub.py), as explicit per-identity routes and configs. Public-seed selection overfits by design: for the
   private/verified tier use v10c.
