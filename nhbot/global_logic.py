@@ -1023,6 +1023,8 @@ class GlobalLogic:
                 self.agent.inventory.buy_food().every(3),
                 # power (SELL_PRICE_ID): offer unknown potions/rings/boots to a shopkeeper for their price group
                 self.agent.inventory.sell_price_identify().every(3),
+                # EARLY_WAND_TEST (off): a never-tested wand is engrave-tested at the first safe moment (grind or dive)
+                self.agent.inventory.wand_early_test(),
                 # lift-ready (WAND_ENGRAVE_TEXT): once diving, re-test with text the wands the grind's test left unnamed
                 self.agent.inventory.wand_text_retest(),
                 # ARMOR_UP: the dig-dive never explores, so gather_items' wear_best_stuff never runs there (castle

@@ -1435,6 +1435,90 @@ class Inventory:
             self.item_manager.possible_objects_from_glyph(item.glyphs[0])
         self.items.update(force=True)
 
+    def early_wand_test_wanted(self, item):
+        """EARLY_WAND_TEST: a wand never engrave-tested (unnamed, one glyph, not known empty, not unpaid) that has
+        tries left."""
+        if not item.is_wand() or item.is_unambiguous() or not item.glyphs or len(item.glyphs) != 1:
+            return False
+        g = item.glyphs[0]
+        if g in self.item_manager._already_engraved_glyphs:
+            return False
+        if item.comment == 'EMPT' or self.is_known_empty(item) or 'unpaid' in (item.text or ''):
+            return False
+        return getattr(self, '_early_tries', {}).get(g, 0) < jf_config.EARLY_WAND_TEST_TRIES
+
+    def _early_test_safe(self):
+        """EARLY_WAND_TEST: a quiet moment on a square where engrave.c lets us write (doengrave: not levitating,
+        check_capacity below Overtaxed, a free hand, a floor square) and no shopkeeper bills the charge."""
+        agent = self.agent
+        bl = agent.blstats
+        prop = agent.character.prop
+        if prop.blind or prop.confusion or prop.stun or prop.hallu or prop.polymorph:
+            return False
+        if agent.no_free_hand() or not agent.can_engrave():
+            return False
+        if bl.hitpoints < jf_config.EARLY_WAND_TEST_HP * bl.max_hitpoints or int(bl.carrying_capacity) >= 4:
+            return False
+        if int(agent.last_observation['blstats'][nh.NLE_BL_CONDITION]) & nh.BL_MASK_LEV:
+            return False
+        level = agent.current_level()
+        here = (level.key(), int(bl.y), int(bl.x))
+        if getattr(self, '_early_bad_square', None) == here:
+            return False
+        if level.objects[bl.y, bl.x] not in G.FLOOR or level.shop_interior[bl.y, bl.x]:
+            return False
+        dive = getattr(getattr(agent, 'global_logic', None), 'dive', None)
+        castle = getattr(dive, 'castle', None)
+        try:
+            if castle is not None and castle.active():
+                return False   # (the castle passage runs its own arrival drill)
+        except Exception:
+            return False
+        r = jf_config.EARLY_WAND_TEST_RADIUS
+        return not any(max(abs(m[1] - bl.y), abs(m[2] - bl.x)) <= r for m in agent.get_visible_monsters())
+
+    @utils.debug_log('inventory.wand_early_test')
+    @Strategy.wrap
+    def wand_early_test(self):
+        """EARLY_WAND_TEST: engrave-test a never-tested wand at the first safe moment after it enters the pack (grind
+        and dive). The test is wand_engrave_identify's core (_engrave_single_wand): an empty answer in the grind, the
+        text path once diving (text_engrave_on), so a grind 'glows, then fades' still gets the dive's text re-test."""
+        if not jf_config.EARLY_WAND_TEST:
+            yield False
+            return
+        dive = getattr(getattr(self.agent, 'global_logic', None), 'dive', None)
+        if jf_config.EARLY_WAND_TEST_DIVE_ONLY and not getattr(dive, 'diving', False):
+            yield False
+            return
+        wands = [i for i in self.items if self.early_wand_test_wanted(i)]
+        if not wands or not self._early_test_safe():
+            yield False
+            return
+        yield True
+        agent = self.agent
+        im = self.item_manager
+        bl = agent.blstats
+        item = wands[0]
+        g = item.glyphs[0]
+        if not hasattr(self, '_early_tries'):
+            self._early_tries = {}
+        self._early_tries[g] = self._early_tries.get(g, 0) + 1
+        here = (agent.current_level().key(), int(bl.y), int(bl.x))
+        text_on = self.text_engrave_on()
+        agent.log(f'EARLY_WAND_TEST engrave-testing {item.text!r} (try {self._early_tries[g]}, text {text_on})')
+        with agent.atom_operation():
+            types = self._engrave_single_wand(item)
+        if types is None:
+            self._early_bad_square = here   # (an engraving, an object or a feature here: try elsewhere)
+        else:
+            if text_on:
+                im._engraved_text.add(g)    # (the text path ran: no dive re-test needed)
+            im._glyph_to_possible_wand_types[g] = types
+            im._already_engraved_glyphs.add(g)
+            im.possible_objects_from_glyph(g)
+            agent.log(f'EARLY_WAND_TEST {item.text!r}: {[o.name for o in types]}')
+        self.items.update(force=True)
+
     @utils.debug_log('inventory.use_spare_wishes')
     @Strategy.wrap
     def use_spare_wishes(self):
