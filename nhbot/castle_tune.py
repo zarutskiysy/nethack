@@ -286,6 +286,7 @@ class PassTune:
         self._xp = None              # experience points / the turn they last rose (the farm's stall check)
         self._xp_turn = None
         self._yielding = False       # a land hostile next to us on the walk: the survival layers have the step
+        self.farm_soft = None        # PT_V2: why the farm is done (strong / stalled) -- crushing on until quiet
 
     # ---------------------------------------------------------------- helpers
 
@@ -884,7 +885,8 @@ class PassTune:
                 return self._handoff()
             if self.down_since is None:
                 self.down_since = now
-            if now - self.down_since > (jf_config.PT_FARM_IDLE if farm else jf_config.PT_CRUSH_WAIT):
+            idle = jf_config.PT_FARM_IDLE if farm and self.farm_soft is None else jf_config.PT_CRUSH_WAIT
+            if now - self.down_since > idle:
                 self.crusher_over = True
                 self.quiet_end = True
                 self._log(f'crusher over: nothing came for {now - self.down_since} turns ({self.cycles} raises)')
@@ -922,22 +924,35 @@ class PassTune:
 
     def _farm_over(self, now):
         """The farm's end: strong enough (XL >= PT_FARM_XL and max HP >= PT_FARM_HP), or its budgets (turns, raises),
-        or nothing came over the lowered bridge for PT_FARM_IDLE turns (crusher_over). Sticky."""
+        or nothing came over the lowered bridge for PT_FARM_IDLE turns (crusher_over). Sticky.
+        PT_V2: XL alone says strong (max HP is the role's: a Wizard has 62 at XL 11), PT_FARM_STALL turns without an
+        experience gain end it too, and both are soft ends -- the crusher goes on until nothing has come over the
+        lowered bridge for PT_CRUSH_WAIT turns (a quiet hand-over: castle_front skips the maze-mouth hold); only the
+        budgets hand over at once."""
         if self.crusher_over:
             return True
         bl = self.agent.blstats
         xl = int(getattr(bl, 'experience_level', 0))
         v2 = jf_config.PT_V2
+        soft = None
         if xl >= jf_config.PT_FARM_XL and (v2 or int(bl.max_hitpoints) >= jf_config.PT_FARM_HP):
-            # (PT_V2: max HP is the role's -- a Wizard has 62 at XL 11 -- so XL alone says strong)
-            why = f'strong: XL {xl}, max HP {int(bl.max_hitpoints)}'
+            soft = f'strong: XL {xl}, max HP {int(bl.max_hitpoints)}'
         elif v2 and self._xp_turn is not None and now - self._xp_turn > jf_config.PT_FARM_STALL:
-            why = f'stalled: no experience for {now - self._xp_turn} turns'
-        elif now - self.crush_start > jf_config.PT_FARM_TURNS:
-            why = f'turn budget ({now - self.crush_start} turns)'
+            soft = f'stalled: no experience for {now - self._xp_turn} turns'
+        if now - self.crush_start > jf_config.PT_FARM_TURNS:
+            hard = f'turn budget ({now - self.crush_start} turns)'
         elif self.cycles >= jf_config.PT_FARM_RAISES:
-            why = f'raise budget ({self.cycles})'
+            hard = f'raise budget ({self.cycles})'
         else:
+            hard = None
+        if v2 and soft is not None and hard is None:
+            if self.farm_soft is None:
+                self.farm_soft = soft
+                self._mile('farm_over', f'{soft}, {self.cycles} raises, XL {xl}: crushing on until the bridge is '
+                                        f'quiet')
+            return False
+        why = soft if (soft is not None and not v2) else hard
+        if why is None:
             return False
         self.crusher_over = True
         self._mile('farm_over', f'{why}, {self.cycles} raises, XL {xl}')

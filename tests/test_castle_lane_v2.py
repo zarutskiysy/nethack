@@ -160,20 +160,44 @@ def test_quiet_crusher_end_is_marked():
 
 
 # ---------------------------------------------------------------- the farm's end
-def test_farm_strong_by_xl_alone():
+def _run_until_handoff(tune, n=200):
+    for _ in range(n):
+        if not tune._step():
+            return True
+    return False
+
+
+def test_farm_strong_by_xl_alone_then_quiet_handoff():
     with flags(CASTLE_PASSTUNE=True, CASTLE_FARM_THEN_ENTER=True):
         agent, dive, tune = B.setup(tune='DGABE', hp=62, maxhp=62)
         agent.inventory.engraving_below_me = 'Elbereth'
         B.known_tune(agent, tune)
         agent.blstats.experience_level = jf_config.PT_FARM_XL
-        assert tune._step() is False and tune.handed_off
-        assert any('M:farm_over' in m and 'strong' in m for m in agent.logs)
+        T.put_monster(agent, ctune.SPAN)
+        # strong (max HP 62 < PT_FARM_HP): the crusher goes on -- the soldier on the span is still crushed
+        assert tune._step() is True and agent.span_state == 'up' and not tune.handed_off
+        assert tune.farm_soft and 'strong' in tune.farm_soft
+        assert any('M:farm_over' in m and 'until the bridge is quiet' in m for m in agent.logs)
+        T.clear_monsters(agent)
+        # ... until nothing has come for PT_CRUSH_WAIT turns (not PT_FARM_IDLE): a quiet hand-over
+        assert _run_until_handoff(tune, jf_config.PT_CRUSH_WAIT + 10)
+        assert tune.handed_off and tune.quiet_end and dive.front._tune_quiet()
+    # a budget still hands over at once (not quiet)
+    with flags(CASTLE_PASSTUNE=True, CASTLE_FARM_THEN_ENTER=True, PT_FARM_RAISES=5):
+        agent, dive, tune = B.setup(tune='DGABE', hp=62, maxhp=62)
+        agent.inventory.engraving_below_me = 'Elbereth'
+        B.known_tune(agent, tune)
+        agent.blstats.experience_level = jf_config.PT_FARM_XL
+        tune.cycles = 5
+        T.put_monster(agent, ctune.SPAN)
+        assert tune._step() is False and tune.handed_off and not tune.quiet_end
+    # PT_V2 off: max HP 62 < PT_FARM_HP farms on (PT_FARM_IDLE)
     with flags(CASTLE_PASSTUNE=True, CASTLE_FARM_THEN_ENTER=True, PT_V2=False):
         agent, dive, tune = B.setup(tune='DGABE', hp=62, maxhp=62)
         agent.inventory.engraving_below_me = 'Elbereth'
         B.known_tune(agent, tune)
         agent.blstats.experience_level = jf_config.PT_FARM_XL
-        assert tune._step() is True and not tune.handed_off       # max HP 62 < PT_FARM_HP: farms on
+        assert not _run_until_handoff(tune, jf_config.PT_CRUSH_WAIT + 10)
 
 
 def test_farm_stall_without_experience():
@@ -182,15 +206,36 @@ def test_farm_stall_without_experience():
         agent.inventory.engraving_below_me = 'Elbereth'
         agent.blstats.experience_points = 1500
         B.known_tune(agent, tune)
-        assert tune._step() is True and not tune.handed_off
+        T.put_monster(agent, ctune.SPAN)                          # (raises keep the idle clock at 0)
+        assert tune._step() is True and tune.farm_soft is None
         agent.blstats.time += 30
-        agent.blstats.experience_points = 1700                    # a kill: the clock starts again
-        assert tune._step() is True and not tune.handed_off
+        agent.blstats.experience_points = 1700                    # a kill: the stall clock starts again
+        tune._step()
         agent.blstats.time += 45
-        assert tune._step() is True and not tune.handed_off
+        tune._step()
+        assert tune.farm_soft is None
         agent.blstats.time += 10
+        tune._step()
+        assert tune.farm_soft and 'stalled' in tune.farm_soft and not tune.handed_off
+        T.clear_monsters(agent)
+        assert _run_until_handoff(tune, 2 * jf_config.PT_CRUSH_WAIT + 10) and tune.quiet_end
+
+
+def test_farm_rests_before_the_quiet_handoff():
+    with flags(CASTLE_PASSTUNE=True, CASTLE_FARM_THEN_ENTER=True):
+        agent, dive, tune = B.setup(tune='DGABE', hp=70, maxhp=100)
+        agent.inventory.engraving_below_me = 'Elbereth'
+        B.known_tune(agent, tune)
+        agent.blstats.experience_level = 12
+        for _ in range(jf_config.PT_CRUSH_WAIT + 5):
+            tune._step()
+            if tune.quiet_end:
+                break
+        assert tune.quiet_end and not tune.handed_off
+        assert tune._step() is True and agent.span_state == 'up' and tune.resting    # 0.7 < PT_FARM_ENTER_HP
+        agent.blstats.hitpoints = 95
+        assert tune._step() is True and agent.span_state == 'down'
         assert tune._step() is False and tune.handed_off
-        assert any('stalled' in m for m in agent.logs)
 
 
 # ---------------------------------------------------------------- the walk: the survival layers take a fight

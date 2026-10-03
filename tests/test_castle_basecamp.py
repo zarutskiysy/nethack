@@ -334,7 +334,8 @@ def test_farm_waits_past_the_old_crusher_wait():
 
 
 def test_farm_hands_over_when_strong():
-    with flags(CASTLE_PASSTUNE=True, CASTLE_FARM_THEN_ENTER=True):
+    # (the pre-PT_V2 farm: an immediate hand-over; PT_V2's quiet end: tests/test_castle_lane_v2.py)
+    with flags(CASTLE_PASSTUNE=True, CASTLE_FARM_THEN_ENTER=True, PT_V2=False):
         agent, dive, tune = setup(tune='DGABE', hp=100, maxhp=100)
         agent.inventory.engraving_below_me = 'Elbereth'
         known_tune(agent, tune)
@@ -345,7 +346,8 @@ def test_farm_hands_over_when_strong():
 
 
 def test_farm_rests_to_full_before_going_in():
-    with flags(CASTLE_PASSTUNE=True, CASTLE_FARM_THEN_ENTER=True):
+    # (the pre-PT_V2 farm: an immediate hand-over; PT_V2's quiet end: tests/test_castle_lane_v2.py)
+    with flags(CASTLE_PASSTUNE=True, CASTLE_FARM_THEN_ENTER=True, PT_V2=False):
         agent, dive, tune = setup(tune='DGABE', hp=70, maxhp=100)
         agent.inventory.engraving_below_me = 'Elbereth'
         known_tune(agent, tune)

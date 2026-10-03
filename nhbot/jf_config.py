@@ -1413,8 +1413,9 @@ PT_FARM_FIGHTS = 600       # fights at most while farming (PT_MAX_FIGHTS otherwi
 #  - the crusher never raises on what dbridge.c automiss() spares (passes_walls / noncorporeal: xorns, earth
 #    elementals, ghosts): wiz-elf 645 made 175 raises in 950 turns on a xorn and earth elementals, so PT_FARM_IDLE
 #    never came;
-#  - the farm ends at XL >= PT_FARM_XL whatever the max HP (PT_FARM_HP 100 is out of a Wizard's reach: XL 11 /
-#    62 HP), or after PT_FARM_STALL crusher turns without experience;
+#  - the farm is done at XL >= PT_FARM_XL whatever the max HP (PT_FARM_HP 100 is out of a Wizard's reach: XL 11 /
+#    62 HP), or after PT_FARM_STALL crusher turns without experience -- soft ends: the crusher goes on until nothing
+#    has come over the lowered bridge for PT_CRUSH_WAIT turns (a quiet hand-over); the budgets still end it at once;
 #  - during the walk to the tune square a land hostile next to us hands the step to the survival layers (fight2,
 #    Elbereth rest, prayer) instead of digging on under its blows (castle._approach: kni-hum 600's horse, val-dwa
 #    212's xorn, wiz-elf 652's guardian naga) or walking on hurt beside the moat (arc-gno 206's shark);
