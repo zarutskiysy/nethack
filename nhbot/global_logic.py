@@ -18,6 +18,7 @@ from . import known_items
 from . import opp_items
 from . import tele_route
 from . import power_route
+from . import protect_buy
 from .character import Character
 from .dive_logic import DiveLogic
 from .kni_steed import SteedKeeper
@@ -291,10 +292,13 @@ class GlobalLogic:
         self.known = known_items.KnownItemsGuard(self.dive, self.mino)   # jf_config.KNOWN_ITEMS (dive-audit)
         # Knight only (kni_steed.py): feed the saddled pony so hunger never turns it on us
         self.steed = SteedKeeper(agent)
+        # BUY_PROTECTION (protect_buy.py): the early trip to the Minetown priest
+        self.protect = protect_buy.ProtectionBuyer(agent)
 
     def update(self):
         self.dive.update()
         self.steed.update()
+        self.protect.update()
 
         if not self.agent.character.prop.hallu:
             if utils.isin(self.agent.glyphs, G.ORACLE).any():
@@ -809,7 +813,17 @@ class GlobalLogic:
         while 1:
             explore_stairs_condition = lambda: False
             restart = lambda: False   # ends the current strategy without finishing the milestone
-            if self.milestone == Milestone.BE_ON_FIRST_LEVEL and self._pick_trip_active():
+            self.dive.prot_trip = False
+            if self.milestone == Milestone.BE_ON_FIRST_LEVEL and self.protect.trip_active() and \
+                    self.protect.target_level() is not None:
+                # BUY_PROTECTION: from the first turn, to the Minetown temple to buy AC while 400*XL is cheap;
+                # the donations are self.protect.donate_strategy (global_strategy), then the grind as before
+                self.dive.pick_trip = False
+                self.dive.prot_trip = True
+                condition = lambda: False
+                level = self.protect.target_level()
+                restart = lambda lv=level: not self.protect.trip_active() or self.protect.target_level() != lv
+            elif self.milestone == Milestone.BE_ON_FIRST_LEVEL and self._pick_trip_active():
                 # PICK_TRIP_XL: a detour from the grind to the Mines for a dwarf's pick-axe, then back to
                 # Dlvl 1. With the pick in hand a failed hunger prayer (a quarter of all games) starts a
                 # dig-dive instead of a starving stairs rescue, and the XL 8 dive needs no Mines trip.
@@ -950,6 +964,8 @@ class GlobalLogic:
                 random unexplored '>' took us into (seed 3 died on Mines 1)."""
                 if self.milestone != Milestone.BE_ON_FIRST_LEVEL or self.agent.current_level().key() == lv:
                     return False
+                if self.dive.prot_trip:
+                    return True   # BUY_PROTECTION: straight to Minetown, no full exploration of the levels passed
                 if jf_config.UPWARD_RETURN and self._pick_trip_done:
                     return True
                 cur = self.agent.current_level()
@@ -974,6 +990,9 @@ class GlobalLogic:
             self.current_strategy().repeat()
             # lowest priority: a peaceful dwarf's pick-axe while in the Mines (dive_logic.DWARF_HUNT)
             .preempt(self.agent, [
+                # BUY_PROTECTION: next to the Minetown priest, donate (protect_buy.py)
+                self.protect.donate_strategy(),
+                self.protect.map_strategy(),
                 self.dive.hunt_strategy(),
                 self.dive.ditch_pet_strategy(),
                 # a tour-mode pick trip looks for the Mines branch itself (dive_logic.FAST_BRANCH)
