@@ -1663,6 +1663,24 @@ RAVEN_GAP_MAX = 12
 # cold (4%) says 'ice cubes' -- the flood-reducers that lift Medusa-3 in the harness (charging an empty wand of digging
 # 18 -> 34 of 49, a frost horn 21 -> 33 of 49). Small (~1 flood-reducer per 270 games), cheap.
 DEEP_WAND_TEST = False
+# EARLY_WAND_TEST (off; research/wand_id.md): engrave-test every never-tested wand soon after it enters the pack, in the
+# grind and in the dive alike (inventory.wand_early_test, a global preempt beside wand_text_retest), not only when the
+# exploration's gather_items happens to run wand_engrave_identify (the dig-dive never runs it). Safe moments only: no
+# hostile within EARLY_WAND_TEST_RADIUS, HP >= EARLY_WAND_TEST_HP, sighted / clear-headed / free hand / not levitating /
+# not Overtaxed (engrave.c check_capacity), a bare floor square outside shops (_engrave_single_wand LOOKs first and
+# leaves any square with an engraving or an object alone), not unpaid, not during the castle passage; at most
+# EARLY_WAND_TEST_TRIES tries per wand. engrave.c: digging, fire and lightning name themselves before the text prompt
+# ("This <wand> is a wand of digging!" -> learnwand, so dive_logic.digging_wand / WAND_RESERVE keep it for Medusa);
+# cancellation / teleportation / make invisible make the finger's 'x' vanish; the dive's text path names the rest.
+# Measured on v10b dev logs (948 Medusa arrivals): no unidentified wand was found never-tested, so the expected gain is
+# ~0 (upper bound ~+0.0001 per game); acts in the grind -> needs fully paired seeds.
+EARLY_WAND_TEST = False
+EARLY_WAND_TEST_RADIUS = 6
+EARLY_WAND_TEST_HP = 0.6
+EARLY_WAND_TEST_TRIES = 6
+# EARLY_WAND_TEST_DIVE_ONLY: act only once the dive has started (the grind's games stay byte-identical, so an A/B can
+# replay pairs; DEEP_WAND_TEST is the older quiet-moment variant of the same dive-time test)
+EARLY_WAND_TEST_DIVE_ONLY = False
 # MEDUSA_STRANDED_REROLL (research/deep_deaths.md): a flood can leave the digger on Medusa's '<' (or on a patch with no
 # square that can be dug: stairs, flooded or refused squares): _dig_max_wet() is None, 'stranded'. The reroll (climb,
 # dig down beside the '>' above, fall onto a fresh square of the arrival region) skipped Medusa-3 altogether, so the
