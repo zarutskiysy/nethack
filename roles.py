@@ -122,3 +122,13 @@ OVERRIDES["cav-gno"] = {"jf_config.ROLE_GRIND_LEVELS": {"Rogue": {}, "Knight": {
 # Healers on the Dlvl-1 grind: dev +0.091 (hea-hum, 60 pairs) and fresh-seed re-run +0.065 +- 0.026 (98 pairs, both
 # races)
 OVERRIDES["hea"] = {"jf_config.ROLE_GRIND_LEVELS": {"Rogue": {}, "Knight": {}, "Tourist": {}, "Priest": {}, "Healer": {}}}
+
+# v10f: v10f: dev-confirmed config (new race keys so the 'wiz' profile is kept, as in the A/B arm)
+# FB_RESERVE 15: dev +0.034 +- 0.011 per Wizard game pooled over 3 seed sets (wiz_fbres, wiz_fbres_rerun, 10-02)
+OVERRIDES["wiz-elf"] = {"jf_config.FB_RESERVE": 15}
+# FB_RESERVE 15 (same evidence as wiz-elf)
+OVERRIDES["wiz-gno"] = {"jf_config.FB_RESERVE": 15}
+# FB_RESERVE 15 (same evidence as wiz-elf)
+OVERRIDES["wiz-orc"] = {"jf_config.FB_RESERVE": 15}
+# FB_RESERVE 15 (same evidence as wiz-elf; wiz-hum-neu plays pf_s25p8, unaffected)
+OVERRIDES["wiz-hum"] = {"jf_config.FB_RESERVE": 15}

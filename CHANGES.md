@@ -21,6 +21,9 @@
   MEDUSA_REENTRY, MEDUSA_STANDOFF (vkurenkov's re-entry lane + our rewrite): +0.0074 +- 0.0023 over 419 paired Medusa replays.
 - **v10e**: Healers on the Dlvl-1 grind (dev +0.091 on human Healers; fresh-seed re-run +0.065 +- 0.026 on both
   races).
+- **v10f**: Wizards on nhbot keep a 15 Pw force-bolt reserve (FB_RESERVE 15). Dev A/B wiz_fbres +0.033 +- 0.020 (181
+  clusters), fresh-seed re-run +0.039 +- 0.023 (137 clusters); with the 2026-10-02 test (+0.031 +- 0.015, 299 pairs)
+  pooled +0.034 +- 0.011 per Wizard game.
 - **eL1fe's fixes** (ported from eL1fe/nethacker@cfc3828, its `dag25` engine = this same base): the spell-direction fix
   (`Agent.cast` sent the compass string as keys: every aimed cast was wasted), force bolt for Wizards (from
   CleverShovel 0d1fb22: never into shops, never flying on into a pet), healing spells for any role that knows them,
