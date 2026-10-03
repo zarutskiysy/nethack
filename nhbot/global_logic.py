@@ -21,6 +21,7 @@ from . import mino_guard
 from . import known_items
 from . import hea_kit
 from . import wiz_kit
+from . import tou_kit
 from . import opp_items
 from . import tele_route
 from . import power_route
@@ -315,6 +316,7 @@ class GlobalLogic:
         self.known = known_items.KnownItemsGuard(self.dive, self.mino)   # jf_config.KNOWN_ITEMS (dive-audit)
         self.hea = hea_kit.HeaKitGuard(self.dive, self.mino)   # jf_config.HEA_SLEEP_ZAP / HEA_QUAFF (Healer kit lane)
         self.wiz = wiz_kit.WizKitGuard(self.dive, self.mino)   # jf_config.WIZ_WAND_FIGHT / WIZ_RING_SAFE ... (Wizard kit)
+        self.tou = tou_kit.TouKitGuard(self.dive, self.mino)   # jf_config.TOU_CAMERA / TOU_QUAFF (Tourist kit lane)
         # Knight only (kni_steed.py): feed the saddled pony so hunger never turns it on us
         self.steed = SteedKeeper(agent)
         # BUY_PROTECTION (protect_buy.py): the early trip to the Minetown priest
@@ -1283,6 +1285,12 @@ class GlobalLogic:
             # back on and regeneration while hurt -- in the grind and the dive, next to the Healer lane
             .preempt(self.agent, [
                 self.wiz.strategy(),
+            ])
+            # Tourist kit lane (TOU_CAMERA / TOU_QUAFF, tou_kit.py; off by default, Tourists only): the expensive camera
+            # at the most damaging blindable hostile within 2 when the melee turns deadly (blinded, 3 in 4 flee), a
+            # healing potion before HP < 1/3 -- grind and dive, above KNOWN_ITEMS and the emergency, below the minotaur
+            .preempt(self.agent, [
+                self.tou.strategy(),
             ])
             # minotaur lane (MINO_GUARD, mino_guard.py): a minotaur in view -- a known way out first (digging down, the
             # up stairs, teleport/sleep/polymorph at it, teleport ourselves, genocide, scare monster), then gambles;
