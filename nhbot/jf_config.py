@@ -1669,6 +1669,27 @@ RAY_CRIT_RUN = 0
 DIG_TOOL_MELEE_MARGIN = 1.3
 # DITCH_RETRY (dive_logic._ditch_pet_check): a pet ditch that ran out of time is retried (DITCH_PET_TRIES)
 DITCH_RETRY = True
+# DITCH_HOLD (dive_logic._ditch_hold_run, research/kni_fix.md): the pet ditch keeps control from the walk to Dlvl 1's
+# '>' to the climb back without the pet. Without it the ditch acts one step at a time inside agent.preempt, and after
+# each of its steps the tour runs one unchecked action of its own: on arrival on Dlvl 2 (a ditch call with no action)
+# the tour's way home to the Dlvl 1 grind takes the '<' at once, with the pet that arrived next to us. In au_kni_ 86 of
+# 90 Knight ditches logged 'pet left on Dlvl 2: True' and in 64 of them the pony was fed/seen on Dlvl 1 again (kn0: 97
+# of 141); the kept pony grows into a warhorse on Dlvl 1 kills (no XP for us) and, once the kit's 20 apples/carrots are
+# thrown, starves at T 4.6-9.4k and kicks the Knight to death (11 of 90 nhbot / 9 of 90 pf_s25p8 Knight games).
+# Also reaches Samurai (DITCH_PET_ROLES). Off pending a dev A/B.
+DITCH_HOLD = False
+DITCH_HOLD_STEPS = 400              # actions per held ditch attempt, at most (DITCH_PET_BUDGET turns also apply)
+# PET_EXILE (dive_logic.pet_exile_strategy, kni_steed.SteedKeeper.exile_wanted): a Knight whose saddled horse is still
+# with it on the Dlvl-1 grind (the ditch failed or ran out of tries) and who has no apple or carrot left once the horse
+# is due to be fed leaves it behind: down Dlvl 1's '>' at a moment the horse is not adjacent (dog.c keepdogs takes only
+# adjacent pets), and the grind goes on on Dlvl 2 (global_logic._grind_level). If the horse came along anyway, back up
+# the '<' without it (a ditch). The horse left on Dlvl 1 is frozen there (levels don't run while we are away) and goes
+# wild on our return (dog.c mon_catchup_elapsed_time past hungrytime + 750), so the grind never goes back. Off.
+PET_EXILE = False
+PET_EXILE_LEVEL = 2                 # the grind's Dlvl once exiled
+PET_EXILE_BUDGET = 300              # turns per attempt
+PET_EXILE_TRIES = 3
+PET_EXILE_RETRY_WAIT = 200
 # ELBERETH_REWRITE_FIX (dive_logic.dig_with_tool, _elbereth_before_digging_escape): waking from a faint mid-dig, a
 # garbled Elbereth is rewritten before the pick goes on (w1 wiz-gno-neu-mal s15 read '_lbcreth' after a faint on Dlvl 23,
 # re-applied the pick at once and was killed by a wood golem in the next faint); the per-square cap

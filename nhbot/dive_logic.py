@@ -935,6 +935,11 @@ class DiveLogic:
         self._ditch_started = None
         self._ditch_tries = 0              # ditch attempts started (DITCH_PET_TRIES)
         self._ditch_pet_came = False       # a pet was seen on Dlvl 2 during this attempt
+        self._exile_state = 0              # PET_EXILE: 0 idle, 1 leaving Dlvl 1 alone, 2 back up without it, 3 over
+        self._exile_started = None
+        self._exile_tries = 0
+        self._exile_retry_after = -1
+        self.pet_exiled = False            # PET_EXILE: the horse was left on Dlvl 1, the grind is on PET_EXILE_LEVEL
         self._pet_hunger_turn = None       # last 'confused from hunger' / 'worried about' message (dog_hunger)
         self._hunting = False              # our last attack was on a peaceful dwarf
         self._hunt_started = {}            # level key -> turn the hunt began there
@@ -5408,6 +5413,9 @@ class DiveLogic:
         if not go:
             yield False
         yield True
+        if jf_config.DITCH_HOLD:
+            self._ditch_hold_run()
+            return
         pos = (bl.y, bl.x)
         pets = utils.isin(agent.glyphs, G.PETS)
         pet_adjacent = any(utils.adjacent(pos, (int(y), int(x))) for y, x in zip(*pets.nonzero()))
@@ -5458,6 +5466,216 @@ class DiveLogic:
             agent.move('<')
         else:
             agent.search()   # let it wander off
+
+    # ---- DITCH_HOLD / PET_EXILE (research/kni_fix.md)
+
+    def _pet_squares(self):
+        """(y, x) of every tame monster on screen."""
+        pets = utils.isin(self.agent.glyphs, G.PETS)
+        return [(int(y), int(x)) for y, x in zip(*pets.nonzero())]
+
+    def _pet_next_to_us(self, pets):
+        bl = self.agent.blstats
+        pos = (int(bl.y), int(bl.x))
+        return any(utils.adjacent(pos, p) for p in pets)
+
+    def _nearest_reachable_down(self, level):
+        dis = self.agent.bfs()
+        downs = [p for p in self._stairs_down(level) if dis[p] != -1]
+        if not downs:
+            return None
+        return tuple(int(v) for v in min(downs, key=lambda p: dis[p]))
+
+    @staticmethod
+    def _ups_to(level, dest_key):
+        """The '<' squares of level leading to dest_key: the remembered arrival stair first (the map's objects don't
+        show the '<' under us until we step off it), then every '<' on the map."""
+        ups = [tuple(p) for p, dest in level.stair_destination.items() if dest is not None and dest[0] == dest_key]
+        ups += [p for p in zip(*utils.isin(level.objects, G.STAIR_UP).nonzero()) if p not in ups]
+        return [(int(y), int(x)) for y, x in ups]
+
+    def _ditch_hold_run(self):
+        """DITCH_HOLD: one ditch attempt run to its end (or to DITCH_HOLD_STEPS actions): to Dlvl 1's '>', wait there
+        for the pet to come next to us, down; on Dlvl 2 wait on the '<' for it to step away, up. Higher-priority
+        strategies (fights, eating, the steed keeper) still preempt it at every step; the ditch then resumes from its
+        state at its next check. Returns when the attempt is over (state 0: retry later, 3: done) or out of steps."""
+        agent = self.agent
+        first = (Level.DUNGEONS_OF_DOOM, 1)
+        second = (Level.DUNGEONS_OF_DOOM, 2)
+        for _ in range(max(1, int(jf_config.DITCH_HOLD_STEPS or 400))):
+            bl = agent.blstats
+            if self._ditch_started is not None and bl.time - self._ditch_started > DITCH_PET_BUDGET:
+                return   # _ditch_pet_check ends (or reschedules) the attempt at the next check
+            level = agent.current_level()
+            key = level.key()
+            pos = (int(bl.y), int(bl.x))
+            pets = self._pet_squares()
+            adjacent = self._pet_next_to_us(pets)
+            if self._ditch_state == 1:
+                if key == second:
+                    self._ditch_state = 2
+                    self._ditch_pet_came = bool(pets)
+                    if not pets:
+                        agent.log('DITCH hold: the pet did not follow us down, back up for another try')
+                    continue
+                if key != first:
+                    self._ditch_state = 3
+                    return
+                target = self._nearest_reachable_down(level)
+                if target is None:
+                    self._ditch_state = 3
+                    return
+                if pos != target:
+                    agent.go_to(*target)
+                elif adjacent:
+                    agent.move('>')
+                else:
+                    agent.search()   # wait for the pet to come next to us (keepdogs takes adjacent pets only)
+                continue
+            if self._ditch_state != 2:
+                return
+            if key == first:
+                if not self._ditch_pet_came:
+                    agent.log('DITCH hold: it did not follow us down, trying again')
+                    self._ditch_state = 0
+                elif pets:
+                    agent.log('DITCH hold: the pet came back up with us, trying again')
+                    self._ditch_state = 0
+                else:
+                    agent.log('DITCH pet: back on Dlvl 1, pet left on Dlvl 2: True (held)')
+                    self._ditch_state = 3
+                return
+            if key != second:
+                self._ditch_state = 3
+                return
+            ups = self._ups_to(level, first)
+            if not ups:
+                self._ditch_state = 3
+                return
+            if pos != ups[0]:
+                agent.go_to(*ups[0])
+            elif adjacent and self._ditch_pet_came:
+                agent.search()   # let it wander off
+            else:
+                agent.move('<')
+
+    def _pet_exile_check(self):
+        """PET_EXILE's entry condition (no agent steps): starts an attempt from state 0, ends a late one."""
+        from .global_logic import Milestone
+        agent = self.agent
+        if self._exile_state == 3 or self.pet_exiled or self.diving:
+            return False
+        if agent.character.role != Character.KNIGHT or \
+                agent.global_logic.milestone != Milestone.BE_ON_FIRST_LEVEL:
+            return False
+        if self._ditch_state in (1, 2):
+            return False   # a ditch is under way
+        bl = agent.blstats
+        level = agent.current_level()
+        first = (Level.DUNGEONS_OF_DOOM, 1)
+        if self._exile_state == 0:
+            if bl.time < self._exile_retry_after or level.key() != first:
+                return False
+            if not agent.global_logic.steed.exile_wanted():
+                return False
+            if self._exile_tries >= jf_config.PET_EXILE_TRIES:
+                self._exile_state = 3
+                return False
+            if self._nearest_reachable_down(level) is None:
+                return False
+            self._exile_tries += 1
+            self._exile_state = 1
+            self._exile_started = bl.time
+            agent.log(f'PET_EXILE: leaving the hungry horse on Dlvl 1 (try {self._exile_tries})')
+        if bl.time - self._exile_started > jf_config.PET_EXILE_BUDGET:
+            agent.log(f'PET_EXILE: out of time (state {self._exile_state})')
+            self._exile_state = 0
+            self._exile_retry_after = bl.time + jf_config.PET_EXILE_RETRY_WAIT
+            return False
+        return True
+
+    @Strategy.wrap
+    def pet_exile_strategy(self):
+        """PET_EXILE (see jf_config): leave a Knight's unfed horse behind on another level, at most one attempt at a
+        time, held to its end like DITCH_HOLD's ditch."""
+        if not jf_config.PET_EXILE:
+            yield False
+        try:
+            go = self._pet_exile_check()
+        except Exception as e:   # fail safe: no exile, the grind goes on as before
+            self.agent.log(f'PET_EXILE: check failed, off: {type(e).__name__} {str(e)[:150]}')
+            self._exile_state = 3
+            go = False
+        if not go:
+            yield False
+        yield True
+        self._pet_exile_run()
+
+    def _pet_exile_run(self):
+        """State 1: on Dlvl 1, to the '>' and down while no pet is next to us -> exiled when we arrive alone; if the
+        pet came along (state 2): wait on the '<' until it is not next to us and climb back -> a ditch after all."""
+        agent = self.agent
+        first = (Level.DUNGEONS_OF_DOOM, 1)
+        second = (Level.DUNGEONS_OF_DOOM, 2)
+        for _ in range(max(1, int(jf_config.DITCH_HOLD_STEPS or 400))):
+            bl = agent.blstats
+            if bl.time - self._exile_started > jf_config.PET_EXILE_BUDGET:
+                return
+            level = agent.current_level()
+            key = level.key()
+            pos = (int(bl.y), int(bl.x))
+            pets = self._pet_squares()
+            adjacent = self._pet_next_to_us(pets)
+            if self._exile_state == 1:
+                if key == second:
+                    if pets:
+                        agent.log('PET_EXILE: the pet came down with us, back up without it')
+                        self._exile_state = 2
+                        continue
+                    self.pet_exiled = True
+                    self._exile_state = 3
+                    agent.log(f'PET_EXILE: on Dlvl 2 without the pet, the grind moves to '
+                              f'Dlvl {jf_config.PET_EXILE_LEVEL}')
+                    return
+                if key != first:
+                    self._exile_state = 0
+                    return
+                target = self._nearest_reachable_down(level)
+                if target is None:
+                    self._exile_state = 0
+                    return
+                if pos != target:
+                    agent.go_to(*target)
+                elif adjacent:
+                    agent.search()   # wait for it to step away (keepdogs takes adjacent pets only)
+                else:
+                    agent.move('>')
+                continue
+            if self._exile_state != 2:
+                return
+            if key == first:
+                if pets:
+                    agent.log('PET_EXILE: the pet came back up with us, trying again later')
+                    self._exile_state = 0
+                    self._exile_retry_after = bl.time + jf_config.PET_EXILE_RETRY_WAIT
+                else:
+                    agent.log('PET_EXILE: back on Dlvl 1, the pet left on Dlvl 2')
+                    self._exile_state = 3
+                    self._ditch_state = 3
+                return
+            if key != second:
+                self._exile_state = 0
+                return
+            ups = self._ups_to(level, first)
+            if not ups:
+                self._exile_state = 3   # stuck on Dlvl 2 with the pet: the grind's way home takes over
+                return
+            if pos != ups[0]:
+                agent.go_to(*ups[0])
+            elif adjacent:
+                agent.search()
+            else:
+                agent.move('<')
 
     def should_hunt_dwarf(self):
         return self._hunt_allowed() and bool(self._hunt_targets())
