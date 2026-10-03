@@ -1904,7 +1904,9 @@ class Inventory:
         return sum(self.BUY_FOOD_NUTRITION.get(item.object.name, 0) * item.count
                    for item in self.agent.edible_carried_food() if item.is_unambiguous())
 
-    def _food_for_sale(self, dis):
+    def _food_for_sale(self, dis, max_weight=None):
+        """The best (nutrition per zorkmid) affordable food for sale on this level: (score, y, x, name, price).
+        max_weight (FOOD_TRIP): skip items heavier than this (a purchase must not make us Burdened)."""
         level = self.agent.current_level()
         gold = self.agent.blstats.gold
         best = None
@@ -1917,10 +1919,41 @@ class Inventory:
                 nutrition = self.BUY_FOOD_NUTRITION.get(item.object.name)
                 if nutrition is None or not item.price or item.price > gold:
                     continue
+                if max_weight is not None and self._unit_weight_or(item, 20) > max_weight:
+                    continue
                 score = nutrition / item.price - dis[y, x] / 1000
                 if best is None or score > best[0]:
                     best = (score, int(y), int(x), item.object.name, item.price)
         return best
+
+    @staticmethod
+    def _unit_weight_or(item, default):
+        try:
+            return item.unit_weight(with_content=False)
+        except Exception:
+            return default
+
+    def buy_food_until(self):
+        """buy_food's target carried nutrition (FOOD_TRIP raises it to FOOD_TRIP_UNTIL)."""
+        if jf_config.FOOD_TRIP:
+            return max(jf_config.BUY_FOOD_UNTIL, jf_config.FOOD_TRIP_UNTIL)
+        return jf_config.BUY_FOOD_UNTIL
+
+    def spare_capacity(self):
+        """Weight we can still pick up unburdened (character.carrying_capacity minus the pack), None if unknown."""
+        try:
+            carried = 0
+            for item in self.items:
+                if item.category == nh.COIN_CLASS:
+                    carried += item.count / 100          # invent.c weight(): 100 coins weigh 1
+                    continue
+                w = item.unit_weight(with_content=True)
+                if w >= 10000:                           # an unknown container / glob (Item.unit_weight's sentinels)
+                    w = 50
+                carried += w * item.count
+            return self.agent.character.carrying_capacity - carried
+        except Exception:
+            return None
 
     def pay_or_drop_unpaid(self):
         """Never walk off with unpaid goods: pay (one item on the bill: '... for N zorkmids.  Pay? [yn]',
@@ -2065,7 +2098,9 @@ class Inventory:
     def buy_food(self):
         agent = self.agent
         bl = agent.blstats
-        if not jf_config.BUY_FOOD or bl.gold < 20 or bl.hunger_state >= Hunger.FAINTING:
+        # FOOD_TRIP: Fainting in a shop is the moment to buy (gH1_heagno s2 fainted for 200 turns inside a general
+        # store holding 1691 gold and died there), but only a few steps away
+        if not jf_config.BUY_FOOD or bl.gold < 20 or (bl.hunger_state >= Hunger.FAINTING and not jf_config.FOOD_TRIP):
             yield False
         level = agent.current_level()
         if not level.shop_interior.any():
@@ -2074,7 +2109,7 @@ class Inventory:
             yield True
             self.pay_or_drop_unpaid()
             return
-        if self.carried_nutrition() >= jf_config.BUY_FOOD_UNTIL or agent._carries_digging_tool() or \
+        if self.carried_nutrition() >= self.buy_food_until() or agent._carries_digging_tool() or \
                 agent.get_visible_monsters():
             yield False
         if jf_config.SHOP_GUARD and agent.character.teleportitis and not agent.character.teleport_control:
@@ -2082,10 +2117,18 @@ class Inventory:
             # angry shopkeeper (base4-jf14 s10, dead)
             yield False
         dis = agent.bfs()
-        target = self._food_for_sale(dis)
+        max_weight = None
+        if jf_config.FOOD_TRIP:
+            # FOOD_TRIP: buy only what we can carry unburdened (Burdened slows us; the item priority would drop it)
+            max_weight = self.spare_capacity()
+            if max_weight is not None and max_weight < 1:
+                yield False
+        target = self._food_for_sale(dis, max_weight=max_weight)
         if target is None:
             yield False
         _, y, x, name, price = target
+        if bl.hunger_state >= Hunger.FAINTING and dis[y, x] > 8:
+            yield False
         key = (level.dungeon_number, level.level_number, y, x)
         if jf_config.BUY_FOOD_GIVEUP and self._buy_food_blocked.get(key, (0, -1))[1] > bl.time:
             yield False

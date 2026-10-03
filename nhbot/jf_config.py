@@ -2706,6 +2706,34 @@ TOU_DART_SAVE_ABOVE = 30
 # knows no way down (dive_logic._read_magic_mapping; 10 of 29 Dlvl-20+ dumps still held all 4 scrolls)
 TOU_MAPPING = False
 TOU_MAPPING_MIN_DEPTH = 2
+# ---- food economy (research/food_econ.md; all off) ----
+# FOOD_TRIP (global_logic._food_trip_level): a gold-rich hero (Healers start with 1001-2000 gold, Tourists 1-1000:
+# u_init.c) leaves the Dlvl-1 grind for Dlvl 2..FOOD_TRIP_MAX_DLVL to find a shop and buy food (inventory.buy_food:
+# best nutrition per zorkmid, one item, pay, repeat) up to FOOD_TRIP_UNTIL nutrition carried, then walks home. Dlvl 1
+# never has a shop (mklev.c: u_depth > 1); Healers spend 72% of their grind there, and 70 of 230 dev Healer games died
+# fainted in the grind holding a median 1340 gold. A level counts as searched after FOOD_TRIP_LEVEL_TURNS turns on it
+# during the trip; the trip ends when the food is bought, every level is searched, gold < 40, FOOD_TRIP_TURNS ran
+# out, a prayer failed or a digging tool is carried (shopkeepers keep it out). Later trips (FOOD_TRIP_MAX in all) go
+# back to a remembered shop that still sells food we can afford once the stash fell below FOOD_TRIP_REFILL.
+# While the flag is on, buy_food stops before a purchase would make us Burdened.
+FOOD_TRIP = False
+FOOD_TRIP_XL = 1                    # from this XL
+FOOD_TRIP_MIN_GOLD = 300            # gold needed to start a trip
+FOOD_TRIP_MAX_DLVL = 3              # deepest level searched (monster difficulty ~ (depth + XL) / 2: makemon.c)
+FOOD_TRIP_LEVEL_TURNS = 700         # turns of searching per level
+FOOD_TRIP_TURNS = 3000              # the whole trip, at most
+FOOD_TRIP_UNTIL = 4000              # buy_food's target nutrition while FOOD_TRIP is on (BUY_FOOD_UNTIL otherwise)
+FOOD_TRIP_MAX = 2                   # trips per game
+FOOD_TRIP_REFILL = 400              # a later trip starts when the carried nutrition falls below this
+# CORPSE_WIDEN (agent._corpse_refusal): poisonous corpses are food for a poison-resistant hero -- Healers and Barbarians
+# (attrib.c: intrinsic from XL 1), orcs (already eaten today), or anyone who got 'You feel (especially) healthy.' from a
+# corpse (eat.c cpostfx), until attrcurse's 'You feel a little sick!'. eat.c eatcorpse: with Poison_resistance the
+# poison branch is only 'You seem unaffected by the poison.' (no Str or HP loss, full nutrition). Zombie and mummy kills
+# stay refused (their corpses are pre-aged by 100 turns: mon.c make_corpse).
+CORPSE_WIDEN = False
+# FOOD_LOG: log lines for the food economy (no behaviour change): 'FOOD eat corpse/inv', 'FOOD refuse <corpse>
+# reason=...', 'FOOD pet eats', 'FOOD shop seen' -- the dev logs keep no messages, so meals and refusals were invisible
+FOOD_LOG = False
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

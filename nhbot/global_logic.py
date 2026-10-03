@@ -309,6 +309,12 @@ class GlobalLogic:
         self._pick_trip_start = None
         self._pick_trip_done = False
         self.mines_not_found = False
+        # FOOD_TRIP (_food_trip_level): trips started, the current one's start turn / refill flag / turns per Dlvl
+        self._ft_trips = 0
+        self._ft_start = None
+        self._ft_refill = False
+        self._ft_level_turns = {}
+        self._ft_prev = None
 
         self.dive = DiveLogic(agent)
         self.landing = castle_landing.LandingGuard(self.dive)   # jf_config.LANDING_GUARD (valley-exit)
@@ -785,6 +791,90 @@ class GlobalLogic:
             return False
         return True
 
+    def _known_food_levels(self, gold):
+        """FOOD_TRIP refills: main-dungeon levels 2..FOOD_TRIP_MAX_DLVL whose remembered shops still sell food
+        (inventory.BUY_FOOD_NUTRITION) we can afford."""
+        nutr = self.agent.inventory.BUY_FOOD_NUTRITION
+        out = []
+        for key, level in self.agent.levels.items():
+            if key[0] != Level.DUNGEONS_OF_DOOM or not 2 <= key[1] <= jf_config.FOOD_TRIP_MAX_DLVL:
+                continue
+            found = False
+            for y, x in zip(*(level.shop_interior & (level.item_count > 0)).nonzero()):
+                for item in level.items[y, x]:
+                    if item.shop_status == Item.FOR_SALE and item.is_unambiguous() and \
+                            item.object.name in nutr and item.price and item.price <= gold:
+                        found = True
+                        break
+                if found:
+                    break
+            if found:
+                out.append(key[1])
+        return sorted(out)
+
+    def _food_trip_end(self, why):
+        self.agent.log(f'FOOD_TRIP over ({why}): gold {self.agent.blstats.gold}, '
+                       f'carried {self.agent.inventory.carried_nutrition()}, levels {self._ft_level_turns}')
+        self._ft_start = None
+        self._ft_prev = None
+
+    def _food_trip_level(self):
+        """FOOD_TRIP: the Dlvl the grind's food trip heads for now, or None (no trip). See jf_config.FOOD_TRIP."""
+        if not jf_config.FOOD_TRIP or self.milestone != Milestone.BE_ON_FIRST_LEVEL:
+            return None
+        agent = self.agent
+        bl = agent.blstats
+        inv = agent.inventory
+        if self._ft_start is None:
+            if self._ft_trips >= jf_config.FOOD_TRIP_MAX or agent.prayer_failed or self.dive.diving or \
+                    bl.experience_level < jf_config.FOOD_TRIP_XL or bl.gold < jf_config.FOOD_TRIP_MIN_GOLD or \
+                    agent._carries_digging_tool():
+                return None
+            carried = inv.carried_nutrition()
+            if self._ft_trips == 0:
+                if carried >= inv.buy_food_until():
+                    return None
+                refill = False
+            else:
+                if carried >= jf_config.FOOD_TRIP_REFILL or not self._known_food_levels(bl.gold):
+                    return None
+                refill = True
+            self._ft_trips += 1
+            self._ft_start = bl.time
+            self._ft_refill = refill
+            self._ft_level_turns = {}
+            self._ft_prev = None
+            agent.log(f'FOOD_TRIP #{self._ft_trips} starts{" (refill)" if refill else ""}: gold {bl.gold}, '
+                      f'carried {carried}, XL {bl.experience_level}')
+        # turns spent on each main-dungeon level during this trip
+        cur = agent.current_level()
+        here = cur.level_number if cur.dungeon_number == Level.DUNGEONS_OF_DOOM else None
+        if self._ft_prev is not None and self._ft_prev[1] is not None and bl.time > self._ft_prev[0]:
+            d = self._ft_prev[1]
+            self._ft_level_turns[d] = self._ft_level_turns.get(d, 0) + bl.time - self._ft_prev[0]
+        self._ft_prev = (bl.time, here)
+        if inv.carried_nutrition() >= inv.buy_food_until():
+            self._food_trip_end('fed')
+            return None
+        if bl.gold < 40:
+            self._food_trip_end('gold spent')
+            return None
+        if bl.time - self._ft_start > jf_config.FOOD_TRIP_TURNS:
+            self._food_trip_end('out of time')
+            return None
+        if agent.prayer_failed or self.dive.diving or agent._carries_digging_tool():
+            self._food_trip_end('prayer failed / diving / digging tool')
+            return None
+        if self._ft_refill:
+            levels = self._known_food_levels(bl.gold)
+        else:
+            levels = list(range(2, jf_config.FOOD_TRIP_MAX_DLVL + 1))
+        for d in levels:
+            if self._ft_level_turns.get(d, 0) < jf_config.FOOD_TRIP_LEVEL_TURNS:
+                return d
+        self._food_trip_end('levels searched')
+        return None
+
     def _grind_level(self):
         """jf_config.GRIND_LEVELS {min XL: Dlvl}: the grind's main-dungeon level at this XL (None: the flag is off).
 
@@ -861,6 +951,13 @@ class GlobalLogic:
                 condition = lambda: False
                 level = (Level.GNOMISH_MINES, jf_config.PICK_TRIP_LEVEL)
                 restart = lambda: not self._pick_trip_active()
+            elif self.milestone == Milestone.BE_ON_FIRST_LEVEL and jf_config.FOOD_TRIP and \
+                    (trip_level := self._food_trip_level()) is not None:
+                # FOOD_TRIP: shops are on Dlvl 2+ only (mklev.c); buy_food does the buying while we explore there
+                self.dive.pick_trip = False
+                condition = lambda: False
+                level = (Level.DUNGEONS_OF_DOOM, trip_level)
+                restart = lambda lv=trip_level: self._food_trip_level() != lv
             elif self.milestone == Milestone.BE_ON_FIRST_LEVEL:
                 self.dive.pick_trip = False
                 condition = self.dive.first_level_done
