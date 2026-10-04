@@ -1188,6 +1188,9 @@ class GlobalLogic:
                            not self.dive._near_hostiles(radius=6)),
                 self.agent.inventory.read_enchant_armor().every(10)
                 .condition(lambda: jf_config.ARMOR_UP and not self.dive._near_hostiles(radius=6)),
+                # BIMANUAL_KEEP: a worn shield keeps the two-handed best weapon out of our hands (wield refuses it)
+                self.agent.inventory.shed_shield_for_bimanual().every(10)
+                .condition(lambda: jf_config.BIMANUAL_KEEP and not self.dive._near_hostiles(radius=6)),
                 # opp-items (GENOCIDE_POLICY): a known scroll of genocide proven not cursed is read at once
                 opp_items.read_strategy(self.agent),
             ])

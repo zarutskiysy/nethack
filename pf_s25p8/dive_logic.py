@@ -1862,7 +1862,15 @@ class DiveLogic:
         name = getattr(mon, 'mname', '')
         if name == 'unknown':
             return self.agent.blstats.time - self._hurt_on_elbereth <= 3
+        if jf_config.LMINION_ELBERETH and self._lawful_minion(mon):
+            return True
         return cls == MON.S_HUMAN or name == 'minotaur'
+
+    @staticmethod
+    def _lawful_minion(mon):
+        """LMINION_ELBERETH (port of nhbot's): an M2_MINION monster -- the A class, all generated lawful -- is
+        is_lminion() for monmove.c onscary, which ignores Elbereth (and a scroll of scare monster) for it."""
+        return bool(getattr(mon, 'mflags2', 0) & MON.M2_MINION)
 
     def on_medusa_level(self):
         return self.medusa_level is not None and self.agent.current_level().key() == self.medusa_level
@@ -1957,7 +1965,8 @@ class DiveLogic:
                 getattr(near[0][3], 'mname', '') not in _only_ranged_monsters():
             self._elbereth_resting = False
             yield False
-        if not near or any(self._ignores_elbereth(m[3]) for m in near) or \
+        if not near or any(self._ignores_elbereth(m[3]) or
+                           (jf_config.LMINION_ELBERETH and self._lawful_minion(m[3])) for m in near) or \
                 agent.character.prop.blind or agent.character.prop.polymorph:
             self._elbereth_resting = False
             yield False

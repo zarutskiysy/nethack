@@ -31,7 +31,7 @@ import re
 import nle.nethack as nh
 from nle.nethack import actions as A
 
-from . import jf_config
+from . import castle_v2, jf_config
 from . import passtune
 from .castle_front import FrontDoor, SPAN, PORTCULLIS, THRONE_ROOM, THRONE_ENTRY, HALL_HOLD, SOLDIER_NAMES
 from .castle_logic import to_bot, to_map, map_char
@@ -1194,6 +1194,13 @@ class Crusher(FrontDoor):
         if not self._on_scare() and self.tries['crush_scare'] < 1 and self._drop_scare():
             self.tries['crush_scare'] += 1
             return True
+        if not self._engraved() and self._can_write() and castle_v2.burn_due(agent, self.tries['crush_burn']):
+            # castle_v2 (CASTLE_V2_BURN): a BURNED Elbereth with a known wand of fire -- no typo, never smudged by our
+            # blows or by time (engrave.c wipe_engr_at skips BURN); the dust one below otherwise
+            self.tries['crush_burn'] += 1
+            self._set_state('burning Elbereth on the crusher square')
+            if castle_v2.burn_elbereth(agent, self.agent.log):
+                return True
         if not self._engraved() and self._can_write() and self.tries['crush_elbereth'] < 300:
             self.tries['crush_elbereth'] += 1
             self._set_state('Elbereth on the crusher square')

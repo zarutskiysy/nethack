@@ -527,8 +527,26 @@ class Character:
 
     def select_skill_to_upgrade(self):
         assert self.upgradable_skills
+        if jf_config.RAN_ENHANCE_LAUNCHER and self.role == self.RANGER:
+            skill = self._ranger_launcher_skill()
+            if skill is not None and skill in self.upgradable_skills:
+                return skill
         # TODO: logic
         return next(iter(self.upgradable_skills.keys()))
+
+    def _ranger_launcher_skill(self):
+        """RAN_ENHANCE_LAUNCHER: the skill (O.P_BOW / O.P_CROSSBOW) of the launcher in hand, else of the best ranged
+        set's launcher; None without one."""
+        try:
+            items = self.agent.inventory.items
+            launcher = next((i for i in items if i.is_launcher() and i.equipped), None)
+            if launcher is None:
+                launcher, _ = self.agent.inventory.get_best_ranged_set()
+            if launcher is None:
+                return None
+            return abs(int(launcher.objs[0].sub))
+        except Exception:
+            return None
 
     def _parse_enhance_view(self):
         if self.agent.popup[0] not in ('Current skills:', 'Pick a skill to advance:'):
@@ -644,7 +662,10 @@ class Character:
             if not (0 <= sub < len(self.skill_levels)):
                 raise ValueError('Invalid item sub: ' + str(item) + ' sub: ' + str(sub))
             # TODO:
-            return self.weapon_bonus[self.skill_levels[sub]]
+            level = self.skill_levels[sub]
+            if jf_config.WEAPON_MODEL_FIX and level in (self.SKILL_LEVEL_RESTRICTED, self.SKILL_LEVEL_UNSKILLED):
+                return (-4, -2)   # weapon.c weapon_hit_bonus -4, weapon_dam_bonus -2 (the table says +2)
+            return self.weapon_bonus[level]
 
     def get_ranged_bonus(self, launcher, ammo, monster=None, large_monster=False):
         # TODO: check code/wiki
@@ -755,16 +776,39 @@ class Character:
         roll_offset += skill_hit_bonus
 
         if item is not None:
-            if item.is_launcher() or item.is_fired_projectile() or item.objs[0].name in ['dart', 'shuriken']:
+            if jf_config.WEAPON_MODEL_FIX and not item.is_weapon():
+                # a weapon-tool (pick-axe, unicorn horn, grappling hook): Item.get_weapon_bonus asserts WEAPON_CLASS,
+                # so rate it like a weapon from its objects.c dice (uhitm.c hits with it as with any weapon)
+                hit, dmg = self._weptool_bonus(item, large_monster)
+                dmg_bonus += dmg
+                roll_offset += hit
+            elif item.is_launcher() or item.is_fired_projectile() or item.objs[0].name in ['dart', 'shuriken']:
                 # TODO: rocks, boomerang
                 dmg_bonus = 1.5  # 1d2
+                roll_offset += item.get_weapon_bonus(large_monster)[0]
             else:
                 dmg_bonus += item.get_weapon_bonus(large_monster)[1]
-            roll_offset += item.get_weapon_bonus(large_monster)[0]
+                roll_offset += item.get_weapon_bonus(large_monster)[0]
         else:
             # TODO: proper unarmed base damage
             dmg_bonus += 1.5
         return roll_offset, max(0, dmg_bonus)
+
+    @staticmethod
+    def _weptool_bonus(item, large_monster):
+        """WEAPON_MODEL_FIX: (to hit, expected damage) of a weapon-tool, as Item.get_weapon_bonus does for weapons: d(sdam)
+        or d(ldam), the hit bonus, and a known enchantment."""
+        hits, dmgs = [], []
+        for obj in item.objs:
+            sides = getattr(obj, 'ldam' if large_monster else 'sdam', 0) or 0
+            dmg = (sides + 1) / 2 if sides else 0.0
+            to_hit = 1 + (getattr(obj, 'hitbon', 0) or 0)
+            if item.modifier is not None:
+                dmg += max(0, item.modifier)
+                to_hit += item.modifier
+            hits.append(to_hit)
+            dmgs.append(dmg)
+        return min(hits), min(dmgs)
 
     def get_skill_str_list(self):
         inv_skill_type = {v: k for k, v in self.name_to_skill_type.items()}

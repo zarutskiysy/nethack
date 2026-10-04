@@ -1,5 +1,13 @@
 # Changes over the parent engine (pf_s25p)
 
+- **castle-v2 (default off, replay A/B pending; research/castle_v2.md)**: `CASTLE_V2` turns on, as one switch applied
+  only once the dive reaches the castle zone (Dungeons of Doom, depth >= 25, below Medusa), the drawbridge-crusher
+  route ported from vk s26 (PASSTUNE_CRUSHER + CASTLE_INNER + the landing lane and wish-route fixes: the vkc1 arm, whose
+  val-hum-law-fem 31 took the tower-chest wand of wishing and levelported to Dlvl 47); `CASTLE_V2_PEACEFUL` (the castle
+  passage waits out a peaceful or tame blocker instead of fighting it); `CASTLE_V2_BURN` (a burned Elbereth on the
+  crusher square with a known wand of fire; burned engravings, read as 'Some text has been burned into the floor
+  here', are parsed while castle_v2 is active); `CASTLE_CENSUS_LOG` (logging only: one structured `CASTLE_V2 census`
+  line per recognised castle: kit, entry routes, switches, expected lane).
 - **v9p (private-safe router)**: v5 plus only the specialist routes that beat nhbot on the hub's VERIFIED (private-seed)
   tier -- Gnomish Archeologists on pf_v36, neutral human Rangers and the female elven Ranger on pf_s25p8, Knights on
   pf_s25p8 -- and no daglar profile for Rangers, Rogues and Tourists (every Ranger and Rogue identity scored lower with

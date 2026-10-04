@@ -1406,6 +1406,25 @@ SHOP_DIG_AFTER = 300
 # soldier ant, 63 -> 0 HP (replay: 0.206 -> 0.507); 5 of 270 games were killed while hallucinating. The first version
 # also blocked it while stunned (1 in 4 per letter, ~7% whole): 30 stunned blocks in da-all2's 270 games, no gain.
 ELBERETH_FUTILE = True
+#
+# KNI_FEYE_TELE (off; A/B, research/competitor_scan4.md C1, research/ports4.md): a Knight never melees a floating eye it
+# can see, telepathic or not -- fight2 applies FEYE_TELE's rules from the start of the game: hit an eye only blindfolded
+# (FEYE_BLIND, towel/blindfold), boxed in by one Elbereth to scare it off, still boxed after FEYE_TELE_BOXED turns hit it
+# at full HP, fed and alone. Exact port of daglar bcc73f3 (from eL1fe bd8cb7c): a long sword (d8+1) seldom one-shots an
+# eye (2d8 HP) and each surviving eye freezes us 2 times in 3 for ~100 turns (uhitm.c passive); Knights have the
+# highest frozen-by-floating-eye death rate in our dev logs (31 of 982 games, 3.2%), and the exact replay on our own
+# Knight route moved verified kni-hum-law by +0.076 per twin group. Needs FEYE_TELE on and FEYE_FIX off (the defaults).
+KNI_FEYE_TELE = False
+#
+# LMINION_ELBERETH (off; A/B, research/competitor_scan4.md C4, research/ports4.md; port of nhbot's flag, which is on
+# there): lawful minions -- every A (Aleax, couatl, Angel, ki-rin, Archon: M2_MINION, generated lawful) -- melee through
+# Elbereth: monmove.c onscary returns FALSE for is_lminion() before it looks at an engraving. This engine counts them as
+# scared: the dive engraves, digs and rests on Elbereth next to them while each hit stops the dig, and fight2 keeps its
+# Elbereth penalty on hitting them; 12 of 604 pf_s25p8 dev games (2.0%) were killed by a couatl or Aleax at Dlvl 16-29.
+# With the flag dive_logic._melee_ignores_elbereth counts them as melee Elbereth-ignorers (AT_ELBERETH_FIX fights them,
+# the dig escape stops digging beside them) and elbereth_rest takes no rest next to one. eL1fe/daglar/DT6A added the same
+# check (eL1fe and daglar for Barbarians only).
+LMINION_ELBERETH = False
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

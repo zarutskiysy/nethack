@@ -95,6 +95,15 @@ def _isin_mask_kernel(elems):
 def isin(array, *elems):
     assert array.dtype == np.int16
 
+    # PERF: the usual arguments (frozensets / tuples) are their own memoization key -- the normalization below
+    # leaves them unchanged, so the cached mask is the same one; anything unhashable takes the old path
+    try:
+        mi, ma, mask = _isin_mask(elems)
+    except TypeError:
+        pass
+    else:
+        return _isin_kernel(array, mi, ma, mask)
+
     # for memoization
     elems = tuple((
         e if isinstance(e, tuple) else
@@ -106,6 +115,24 @@ def isin(array, *elems):
 
     mi, ma, mask = _isin_mask(elems)
     return _isin_kernel(array, mi, ma, mask)
+
+
+def neighbor_count8(mask):
+    """For each square, how many of its 8 neighbours are set in the 2-D boolean `mask` (outside the map counts as
+    unset), as int32 -- the same numbers as summing translate(mask, dy, dx) over the 8 offsets (dy, dx) != (0, 0)."""
+    h, w = mask.shape
+    p = np.zeros((h + 2, w + 2), np.int32)
+    p[1:-1, 1:-1] = mask
+    return (p[:-2, :-2] + p[:-2, 1:-1] + p[:-2, 2:] + p[1:-1, :-2] + p[1:-1, 2:] +
+            p[2:, :-2] + p[2:, 1:-1] + p[2:, 2:])
+
+
+def neighbor_count4(mask):
+    """As neighbor_count8, over the 4 orthogonal neighbours only."""
+    h, w = mask.shape
+    p = np.zeros((h + 2, w + 2), np.int32)
+    p[1:-1, 1:-1] = mask
+    return p[:-2, 1:-1] + p[2:, 1:-1] + p[1:-1, :-2] + p[1:-1, 2:]
 
 
 def any_in(array, *elems):
@@ -140,6 +167,36 @@ def debug_log(txt, fun, color=(255, 255, 255)):
             return ret
 
     return wrapper
+
+
+def edit_distance(s1, s2):
+    """Levenshtein distance, the same number as nltk.metrics.distance.edit_distance(s1, s2) with its defaults
+    (substitution cost 1, no transpositions) -- PERF: importing nltk pulled in scipy.stats, ~1 s per game process."""
+    longest = max(len(s1), len(s2))
+    if longest > 2000:   # nltk's MAX_DISTANCE_INPUT_LEN guard
+        raise ValueError(f"edit_distance: input length {longest} exceeds MAX_DISTANCE_INPUT_LEN (2000)")
+    len1, len2 = len(s1), len(s2)
+    prev = list(range(len2 + 1))
+    for i in range(1, len1 + 1):
+        cur = [i] + [0] * len2
+        c1 = s1[i - 1]
+        for j in range(1, len2 + 1):
+            cur[j] = min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (1 if c1 != s2[j - 1] else 0))
+        prev = cur
+    return prev[len2]
+
+
+def box3_sum_symm(a):
+    """Sum over each 3x3 neighbourhood with mirrored edges: the same integers as
+    scipy.signal.convolve2d(a, np.ones((3, 3)), boundary='symm', mode='same') for an integer 2-D array -- PERF:
+    scipy.signal pulled in scipy.stats at import (~1 s per game process)."""
+    p = np.pad(a, 1, mode='symmetric')
+    h, w = a.shape
+    out = np.zeros((h, w), dtype=np.result_type(a.dtype, np.int64) if a.dtype.kind in 'biu' else a.dtype)
+    for dy in range(3):
+        for dx in range(3):
+            out += p[dy:dy + h, dx:dx + w]
+    return out
 
 
 def adjacent(p1, p2):

@@ -10,6 +10,19 @@ from nhbot.character import Character
 from nhbot.glyph import MON
 from nhbot.item import Item
 
+_OBJECT_TABLES = None
+
+
+def _object_tables():
+    """PERF (parse_name): the static object class / name / description of every object index, read from NLE once
+    (objects[] and obj_descr[] never change: the per-game shuffle moves oc_descr_idx, not obj_descr)."""
+    global _OBJECT_TABLES
+    if _OBJECT_TABLES is None:
+        _OBJECT_TABLES = ([ord(nh.objclass(i).oc_class) for i in range(nh.NUM_OBJECTS)],
+                          [nh.objdescr.from_idx(i).oc_name for i in range(nh.NUM_OBJECTS)],
+                          [nh.objdescr.from_idx(i).oc_descr for i in range(nh.NUM_OBJECTS)])
+    return _OBJECT_TABLES
+
 
 class ContainerContent:
     def __init__(self):
@@ -583,16 +596,17 @@ class ItemManager:
             # no name match in these classes either, so the category check asserted on every look at them
             prefixes = prefixes + [('', nh.BALL_CLASS), ('', nh.CHAIN_CLASS)]
             suffixes = suffixes + [('s', nh.BALL_CLASS), ('s', nh.CHAIN_CLASS)]
+        oc_class, oc_name, oc_descr = _object_tables()
         for i in range(nh.NUM_OBJECTS):
             for pref, c in prefixes:
-                if ord(nh.objclass(i).oc_class) == c:
-                    obj_name = nh.objdescr.from_idx(i).oc_name
+                if oc_class[i] == c:
+                    obj_name = oc_name[i]
                     if obj_name and name == pref + obj_name:
                         obj_ids.add(i)
 
             for suf, c in suffixes:
-                if ord(nh.objclass(i).oc_class) == c:
-                    obj_name = nh.objdescr.from_idx(i).oc_name
+                if oc_class[i] == c:
+                    obj_name = oc_name[i]
                     if obj_name and (name == obj_name + suf or \
                                      (c == nh.FOOD_CLASS and \
                                       name == obj_name.split()[0] + suf + ' ' + ' '.join(obj_name.split()[1:]))):
@@ -633,14 +647,14 @@ class ItemManager:
 
         for i in range(nh.NUM_OBJECTS):
             for pref, c in prefixes:
-                if ord(nh.objclass(i).oc_class) == c:
-                    obj_descr = nh.objdescr.from_idx(i).oc_descr
+                if oc_class[i] == c:
+                    obj_descr = oc_descr[i]
                     if obj_descr and name == pref + obj_descr:
                         appearance_ids.add(i)
 
             for suf, c in suffixes:
-                if ord(nh.objclass(i).oc_class) == c:
-                    obj_descr = nh.objdescr.from_idx(i).oc_descr
+                if oc_class[i] == c:
+                    obj_descr = oc_descr[i]
                     if obj_descr and name == obj_descr + suf:
                         appearance_ids.add(i)
 

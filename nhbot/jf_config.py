@@ -2699,6 +2699,25 @@ WIZ_REGEN_ON = 0.5
 WIZ_REGEN_OFF = 0.95
 WIZ_RING_RETRY = 20           # turns before the same ring is put on / taken off again
 
+# Monk kit lane (research/mon_kit.md; all off; role-gated in code to Character.MONK, switched on per identity through
+# roles.py OVERRIDES['mon'] / JF_ROLE_CFG {"mon": {...}}). 90 current-code mon-hum-neu dev games (au_monhn_, 0.446):
+# u_init.c Monk[] starts with ONE spellbook, rn2(90) / 30 -> healing, protection or sleep (a third each), and the robe
+# (spell.c percent_success: splcaster -= urole.spelarmr 20) makes every level-1 spell 0% fail -- but nothing ever casts
+# the sleep spell (wiz_kit's fight lane is Wizard-only) and protection only with SPELL_KIT (off). 25 of the 90 games wore
+# a shield (18 a dwarvish roundshield from the Mines dwarves): a shield heavier than a small shield quarters every spell's
+# chance (percent_success: weight(uarms) > SMALL_SHIELD -> chance /= 4: healing 100% -> 65%, sleep -> 44-60% with a metal
+# helm), and agent.should_cast_heal stops casting healing above 20% fail; any shield also drops the martial-arts to-hit
+# bonus (uhitm.c find_roll_to_hit: !uwep && !uarms -> +(u.ulevel / 3) + 2, +4 at XL 7-8).
+# MON_SLEEP_FIGHT: a Monk uses wiz_kit's fight lane (WIZ_WAND_FIGHT's plan: the sleep spell and found attack wands along
+# the line that removes most of a deadly melee, the sleepers then meleed) with its own intrinsic sleep resistance
+# (attrib.c mon_abil: XL 1 -> its own sleep ray's bounce is harmless: zap.c zhitu 'You don't feel sleepy'), and the
+# minotaur lane casts sleep at a minotaur in line after its known wands (MR 0: monst.c; the 6 maze deaths to
+# minotaurs in au_monhn_ were all at XL 7-8, two turns after it came adjacent).
+MON_SLEEP_FIGHT = False
+# MON_SHIELD: 1 -> a Monk wears no shield heavier than a small shield (spells keep their chance), 2 -> no shield at all
+# (also keeps the martial-arts to-hit bonus); a shield of reflection is always allowed. 0: off.
+MON_SHIELD = 0
+
 # Tourist kit lane (research/tou_kit.md; tou_kit.py, combat/fight_heur.tourist_*, dive_logic; role-gated in code and
 # through roles.py OVERRIDES['tou']). 90 current-code games (au_tou_): the expensive camera (30-99 charges) was applied
 # twice; 22 of 38 grind deaths and 36 of 52 dive deaths were melee against monsters with eyes; the +2 dart stack was
@@ -2803,6 +2822,198 @@ MAZE_HASTE = False
 # first seen already adjacent, in our own pit (deep_deaths §3.2), and the drop then costs a ~40-HP round. The scroll is
 # lost with the hole 2 times in 3 (dokick.c impact_drop), one scroll per level. Known in 3.7% of pick visits.
 MAZE_SCARE_FIRST = False
+# ---- Ranger kit (research/ran_kit.md; all off) ----
+# RAN_ARCHERY (combat/fight_heur.ranger_swap_ok / ranger_focus, agent._fight2_perform_action): a Ranger shoots the
+# monsters it fights at close range instead of meleeing them. Current dev games (b10_rangrd/rgoff/au_rangno_grdoff, 642):
+# no Ranger ever died with its launcher in hand in the dive -- the dig-dive holds the pick-axe (dig.c use_pick_axe wields
+# it for every hole), fight2's 'melee' then fights with it (DIG_TOOL_MELEE) or swaps to the dagger, and RANGER_POINT_BLANK
+# only shoots when the launcher is already wielded. In 58% of the mid-dive (Dlvl 5-20) deaths an Elbereth-ignorer (elves,
+# soldiers, @) was in the fatal fight; we meleed in 66% of them and shot in 16%. A Ranger's pick-axe is Unskilled (u_init.c
+# Skill_Ran: P_PICK_AXE max Basic, untrained): -4 to-hit and -2 damage (weapon.c weapon_hit_bonus/weapon_dam_bonus) on top
+# of the pick's 0 hit bonus; the +1 dagger is Basic d4+1. Point blank, the +1 bow with +2 arrows hits about as often as the
+# dagger (dothrow.c thitmonst: +2 at distance 1, launcher and arrow enchantment, objects' hit bonus) and fires
+# rnd(1 + 1 Ranger [+1 elven/orcish bow and arrows, gnomish crossbow] [+1 Skilled]) arrows of d6+2 (dothrow.c l.120-200).
+# Three pieces, all only for a Ranger (not polymorphed) whose best ranged set is a launcher with at least
+# RAN_ARCHERY_MIN_AMMO matching missiles:
+#  - the launcher not in hand and a target worth the swap (an Elbereth-ignorer, an insect / hostile domestic animal
+#    (is_dangerous_monster), or permonst difficulty >= RAN_ARCHERY_MIN_DIFF -- 4: rothes, dwarves, hill orcs, the grind's
+#    main killers (rothe 15, dwarf 6 of 90 grind deaths); never weak, passive-only, exploding or were monsters) next
+#    to us: the shot gets the point-blank priority (one above melee, + AT_FOCUS on a focus ignorer), so the 'ranged'
+#    action wields the launcher first (one move: wield.c) and RANGER_POINT_BLANK fires from the next turn on;
+#    at distance 2 the -5 for an unwielded launcher is dropped (the swap happens before it closes in);
+#  - the launcher in hand and an Elbereth-ignorer next to us while an Elbereth could be (re)written (focus_ignorer):
+#    the point-blank shot gets AT_FOCUS as melee does (17 + 10 > melee 16 + 10, which swapped to the dagger);
+#  - a failed swap (a cursed weapon in hand) blocks further swaps for RAN_ARCHERY_BLOCK_TURNS.
+# RAN_ARCHERY_DIVE_ONLY: all of it only while diving (a late-acting variant: pairs stay identical through the grind).
+RAN_ARCHERY = False
+RAN_ARCHERY_MIN_AMMO = 5
+RAN_ARCHERY_MIN_DIFF = 4
+RAN_ARCHERY_DIVE_ONLY = False
+RAN_ARCHERY_BLOCK_TURNS = 100
+# RAN_ENHANCE_LAUNCHER (character.select_skill_to_upgrade): a Ranger advances its launcher's skill (bow / crossbow) first
+# when #enhance offers it; the stock order takes the first advanceable skill of the list, dagger before bow. Skilled
+# bow: +1 multishot, +2 to-hit, +1 damage per arrow (weapon.c weapon_hit_bonus/weapon_dam_bonus, dothrow.c).
+RAN_ENHANCE_LAUNCHER = False
+# RAN_AMMO_VIEW (dive_logic._missile_candidates, with MISSILE_RECOVER): a Ranger's in-view recovery also targets the
+# missiles its launchers fire (arrows and ya for the bow family, crossbow bolts for a crossbow), not only daggers. The dig-dive never
+# runs gather_items, so every arrow shot there is left behind; 107 of 340 Rangers reaching Dlvl 20 carried < 10 arrows/bolts
+# (70 none). Also arrows dropped by the monsters we kill (elves, orcs, gnomes with crossbows).
+RAN_AMMO_VIEW = False
+
+# --- ports4 (research/ports4.md; competitor_scan4 C2b, section 5) ---
+# SHOP_MASK_FIX (off; A/B per role, research/competitor_scan4.md C2b; port of eL1fe bd8cb7c): the shop mask
+# (agent._update_level_shops) floods from a peaceful shopkeeper over walkable squares, stopping only at 'entry' squares --
+# walkable squares between two remembered walls. Seen from the corridor through its door, a lit shop shows its door but
+# not the wall squares beside it, so the door is no entry and the fill leaks out through it: the corridor (and the room
+# beyond) becomes shop floor for good (level.shop is never cleared). That mask vetoes force bolt (fight_heur
+# _force_bolt_tail_safe: eL1fe public s7, a giant bat killed a Wizard at full Pw; our du1 wiz-gno-neu-mal__626 meleed a
+# giant bat in a shop doorway at Pw 71/71), and it also gates dig sites, pickups, missile recovery and other shop rules
+# for every role. With the flag: an open door or doorway always bounds the fill and a corridor is never shop floor; in
+# the bolt's tail check a seen wall stops the line (zap.c bhit: !ZAP_POS) before the dilated shop mask beyond it, and a
+# shop-mask square vetoes the bolt only when it is floor, a doorway or a door (the bolt breaks a closed one), not the
+# shop's walls or the rock at its corners. eL1fe gated it to Wizards in code; here it is gated per role through
+# JF_ROLE_CFG / roles.py OVERRIDES, e.g. {"wiz": {"jf_config.SHOP_MASK_FIX": true}} (JF_CFG would turn it on for every
+# nhbot role).
+SHOP_MASK_FIX = False
+# PET_KILL_PRAYER_HOLD (off; A/B, research/competitor_scan4.md section 5, research/ports4.md; port of DT6A 751f31d): after
+# 'You hear the rumble of distant thunder...' / 'You hear the studio audience applaud!' (we killed our own pet: mon.c
+# xkilled adjalign(-15) plus the pet's malign -- -9 more for a neutral hero, whose alignment-0 pet is coaligned
+# (makemon.c set_malign) -- and Luck -1) hold every prayer but the certain-death ones (stoning, sliming, ... --
+# is_safe_to_pray(certain_death=True)) for PET_KILL_PRAYER_HOLD_TURNS turns, as DIVE murder holds them after 'You
+# murderer!'. DT6A's case: a neutral Tourist's dart killed its little dog in a dark corridor at T721; its hunger prayer at
+# T1760 failed ('The Lady is displeased'), the rescue dive died on Dlvl 7. Verified +0.0023/program (z 1.5) on DT6A's
+# engine, which has no prayer model. Ours has one (PRAYER_MODEL): it already takes Luck -1 (timing out at the next
+# multiple of 600 turns) and record -15 from the same messages and refuses prayers while it believes Luck or the record
+# negative; it misses the neutral hero's extra -9. So the hold mainly (a) blocks prayers the model would allow while a
+# neutral hero's real record is still < 0, and (b) blocks good prayers after the model's estimate has recovered (a
+# lawful/chaotic hero, or a high record). Per-role turns via JF_ROLE_CFG (e.g. shorter for initrecord-10 roles).
+PET_KILL_PRAYER_HOLD = False
+PET_KILL_PRAYER_HOLD_TURNS = 3000
+
+# ARC_WHIP (agent._arc_whip_attack; research/arc_kit.md): an Archeologist fights by APPLYING its bullwhip at the adjacent
+# target. apply.c use_whip: (1) a bullwhip not in hand is wielded inside the same action (wield_tool, res = 1), where
+# fight2 spent a whole move on 'w' first -- the bot's dps model (utils.calc_dps ignores the target's AC) rates the +2
+# bullwhip 1.4x the +0 pick-axe at XL 5, above DIG_TOOL_MELEE_MARGIN, so the swap came on every dive fight: 46% of the
+# v10c-code Archeologist games (devruns/au_arcgno_) show it in their last 60 messages, and 32 of 46 dive deaths; (2) not
+# trapped in a pit, against a monster wielding a weapon it is a disarm: 'proficient' is 1 for any Archeologist with Dex
+# >= 6 (+1 per Dex point above 14), so the yank never fails unless the weapon is welded; the weapon lands under the
+# monster (or near/with us at higher Dex), possibly_unwield() makes it re-wield a spare (its move) or fight barehanded --
+# a Woodland-elf's runed broadsword is about half of its 2d4 + d6+d4 hit; (3) otherwise -- an unarmed target, or in our
+# pit at a small or medium one -- it is attack(), the same melee hit as moving into it. Not in a pit at a large one
+# (use_whip wraps the whip round it and yanks us out of the pit), not while confused/stunned (confdir), polymorphed or
+# engulfed, not with a welded (cursed) weapon in hand, only with a known-uncursed bullwhip, and only while the bullwhip
+# is what wield_best_melee_weapon would pick anyway (a better found weapon keeps the old path). Flag off: no change.
+ARC_WHIP = False
+ARC_WHIP_MIN_DEX = 6        # use_whip: an Archeologist below Dex 6 has proficient 0 -- the whip neither disarms nor hits
+# LOWHP_GAMBLE (agent.emergency_strategy; research/arc_kit.md): the last resort's gambles on UNKNOWN wands, potions and
+# scrolls also fire on a burst (HP lost over KNOWN_ITEMS_BURST_TURNS >= HP left, HP < KNOWN_ITEMS_BURST_FRAC of max -- the
+# KNOWN_ITEMS trigger) while diving at depth >= LOWHP_GAMBLE_MIN_DEPTH, not only at pray.c's critically low HP. An XL-5
+# Archeologist (35-45 max HP: critical at <= 7-9) meets elves hitting 2d4 + a d8-ish weapon: 39% of the Archeologist
+# dive deaths (cur + ARC5 tags, 237) passed through 'LOWHP_CRIT no prayer' (HP < 12, no prayer can fix it) and the last
+# resort fired in only 19%. Only with an Elbereth-ignorer next to us or Elbereth futile (blind, no free hand, hurt on an
+# intact one); no prayer in this window (pray.c would see no HP trouble); potions first (they touch only us), then an
+# unknown wand at the attacker only with KNOWN_ITEMS_RAY_RUN free squares behind it (a ray's bounce), then scrolls.
+LOWHP_GAMBLE = False
+LOWHP_GAMBLE_MIN_DEPTH = 5
+
+# --- bar-kit (research/bar_kit.md) ---
+# MEDUSA_ISLE_HOP (dive_logic._isle_hop_action): on Medusa's level a pick-axe hole floods with odds k/(k+1) at the pit
+# and again at the hole (dig.c fillholetyp, k moat squares around it; a wand's hole rolls once), and a flooded digger
+# crawls out only to a free land square next to it (trap.c drown -> hack.c crawl_destination: goodpos, no monster);
+# with none it drowns on the spot. A crawl lands on a random such square, often one whose every other neighbour is
+# moat or tree, and the dive then dug again from there. The last screen before 553 deduplicated Medusa-level
+# drownings (all devruns tags) showed, of the 392 readable ones: 108 with no land square next to the hero at all,
+# 141 with none but monsters (whose squares may hide land), 61 with one, 82 with two or more. Barbarians: 24
+# drownings on her level in 361 dev games (6.6% of games, 9.8% of arrivals), 19 of them after an earlier flood's
+# 'Pheew! That was close.' With the flag, a digger standing on a square with no land next to it (no tree, wall or
+# door counted) steps into an adjacent moat square that borders other land before any dig or zap there: drown()
+# crawls it out at once to a random free land square next to that water -- the square it came from is one of them,
+# so a hop never strands it worse than before -- and the hop picks the water with the best share of squares on land
+# with room to dig (8-connected land of 2+ squares). Costs a soaking (rust, diluted potions, blanked scrolls) per
+# hop. Not in our own pit, not levitating, not Stressed or worse (emergency_disrobe would shed gear or fail: 'But in
+# vain.'), not where MEDUSA_FREEZE can ice the moat first, never into a square a monster is seen on, at most
+# MEDUSA_ISLE_HOP_MAX hops per level. Complements DROWN_GUARD (off: exits held by monsters, walks to a square with
+# DROWN_GUARD_EXITS land exits), which cannot help a hero whose land ends at its own square.
+MEDUSA_ISLE_HOP = False
+MEDUSA_ISLE_HOP_MAX = 6
+# BIMANUAL_KEEP (inventory.get_best_armorset / shed_shield_for_bimanual): while the best melee weapon we carry needs
+# both hands (a Barbarian's two-handed sword or battle-axe), no shield is kept, worn or left on. The dive wields the
+# pick-axe (one-handed) for every hole, so the tour's wear_best_stuff put on a dwarf's roundshield or a small shield
+# (11 of 247 Barbarian Medusa arrivals wore one); inventory.wield then refuses the two-hander for the rest of the
+# game (do_wield.c: 'You cannot wield a two-handed sword while wearing a shield'; the bot gives up without a turn)
+# and every fight is fought with the pick: Unskilled for a Barbarian (weapon.c: -4 to hit, -2 damage, d6) against
+# d12 / d8+d4 at Basic. A worn, not cursed shield comes off out of reach of hostiles (none within 6). Per-role:
+# enable it where the best weapon is a two-hander on purpose (bar); Wizards' quarterstaff is two-handed too.
+BIMANUAL_KEEP = False
+# WEAPON_MODEL_FIX (character._get_weapon_skill_bonus / get_melee_bonus): two bugs in the melee model behind
+# get_best_melee_weapon and DIG_TOOL_MELEE. (1) Restricted / Unskilled weapons were rated +2 damage; weapon.c
+# weapon_dam_bonus gives -2 (hit -4 was right), so an unskilled weapon looked 4 points better than it is. (2) A
+# weapon-tool (pick-axe, unicorn horn, grappling hook) raised AssertionError in Item.get_weapon_bonus (TOOL_CLASS),
+# which _keep_digging_tool_wielded swallowed into 'swap': DIG_TOOL_MELEE never kept a pick-axe, only a mattock --
+# e.g. an Archeologist's Basic/Expert pick (d6) went for its bullwhip (d2). With the flag weapon-tools are rated from
+# their objects.c dice (sdam/ldam, hitbon). Barbarians are unaffected (their two-hander wins either way); the users
+# are the pick-axe roles (Archeologists, dwarves) and anyone holding an unskilled weapon.
+WEAPON_MODEL_FIX = False
+
+# =====================================================================================================================
+# castle_v2 (branch castle-v2, research/castle_v2.md; nhbot/castle_v2.py). Every switch below is OFF: with them off the
+# bot plays exactly as integ.
+# Census of 1,865 unique dev Castle arrivals: 97.6% die on the level (82.5% of the deaths in the west maze where they
+# land, median life 104 turns); the only route with an end-to-end tower-chest wand in our own replays is the drawbridge
+# crusher (passtune by Mastermind -> bridge toggles crush the garrison -> CASTLE_INNER dash -> tower chest): vkc1
+# val-hum-law-fem 31 took the wand and levelported to Dlvl 47 (1 of 19 instrument kits; 7 walked in, 4 reached the
+# throne room, 2 the hallways). Every way to a tower passes the throne room (castle.des: walls NON_DIGGABLE, level
+# noteleport), and only the crusher kills the garrison and the court for a XL 7-9 hero, so the route needs a tonal
+# instrument (8.4% of arrivals, identified or 'flute/harp/horn'); force bolt / striking (29%) only destroy the bridge
+# (dbridge.c destroy_drawbridge: no more crushing) and the wand of opening (0.8%) only lowers it once.
+# CASTLE_V2 (off): the crusher route as ONE switch, applied late: the first time the dive stands in the Dungeons of Doom
+# at depth >= 25 below a known Medusa (or none known) -- the castle's zone -- castle_v2.apply_bundle() turns on vk's
+# shipped castle flags (CASTLE_V2_BUNDLE; the vkc1 arm without INV_FULL_LIST / PREEMPT_SAFE, which act early). Nothing
+# changes before that point, so a replay of Castle arrivals is an exact paired test. Also arms the v2 fixes below.
+CASTLE_V2 = False
+CASTLE_V2_BUNDLE = ('PASSTUNE_CRUSHER', 'CASTLE_INNER', 'LANDING_CRUSH_FIRST', 'LANDING_DIRECT', 'LANDING_ROUTE',
+                    'LANDING_FOCUS', 'CASTLE_ZAP_RECOGNIZE', 'WISH_ROUTE_FIRST', 'LIFT_EAST_DROP', 'EAST_LATE_DOOR',
+                    'POLY_RESUME', 'XORN_STAIRS_NOTE', 'T_ROUTE_FIRE', 'T_ROUTE_EARLY_CHARGE', 'T_ROUTE_TOP',
+                    'ROUTE_ELBERETH', 'ROUTE_RING_SWAP', 'WISH_PRAYER_HOLD')
+# CASTLE_V2_PEACEFUL (on under CASTLE_V2 only): the castle passage's step (castle_logic._step_to, used by the landing
+# route out of the west maze and the lift walks) never fights a peaceful or tame monster that blocks the next square: it
+# waits (search) and, after CASTLE_V2_PEACEFUL_WAITS waits on one square, routes round it. vkc1 wiz-elf-cha-fem 61: the
+# route 'attacked what blocks' a peaceful Grey-elf (an elven Wizard's kin), angered it and was cut down 4 turns later.
+CASTLE_V2_PEACEFUL = True
+CASTLE_V2_PEACEFUL_WAITS = 4
+# CASTLE_V2_BURN (on under CASTLE_V2 only): the crusher square's Elbereth is BURNED with a known wand of fire when the kit
+# has one (engrave.c: type BURN takes no extra turn for 8 letters, never smudges -- wipe_engr_at skips it -- and has no
+# dust typo), instead of the dust one (1 letter in 25 garbled: 28% of writes; rnd(3) letters lost every ~85 turns,
+# allmain.c; 3 more per own melee swing, uhitm.c u_wipe_engr). vkc1 deaths at and after the square read "Elbereth"
+# misspelt in 4 of 9 last screens ("E#bereth", "_|beretn", "Elbe ?th", "Elberet7"). At most 2 tries per square.
+CASTLE_V2_BURN = True
+# CASTLE_CENSUS_LOG (off; logging only, no play change): one 'CASTLE_V2 census {json}' line per Castle level the dive
+# recognises -- kit (instruments, wands by identity or engrave class, spells, scrolls, lifts, unlocking tools, digging
+# tool, Excalibur, MR), the entry routes it could take, the castle switches in force and the lane it is expected to run.
+CASTLE_CENSUS_LOG = False
+
+# ---- cav-kit (research/cav_kit.md): Caveman food economy. Cavemen lose 25% of their games before the dive (Barbarians
+# and Valkyries 12-17% on the same seeds and code), half of them fainted or starved: they spend 2.5x as many grind turns
+# in Fainting holds (0.18 holds per 1000 grind turns vs 0.07), start without food, and their little dog (role.c
+# PM_LITTLE_DOG; level 2, it survives the grind where kittens die) eats ~40% of the corpses (17 pet meals vs our 27 in the
+# death windows of 88 Caveman grind deaths). The pet ditch itself is config: dive_logic.DITCH_PET_ROLES with Character.
+# CAVEMAN (2) added, plus DITCH_HOLD (kni-fix, merged here).
+#
+# PET_MEAT (agent._is_corpse_editable): eat.c cprefx -- 'cannibals are allowed to eat domestic animals without penalty':
+# CANNIBAL_ALLOWED() is Role_if(PM_CAVEMAN) || Race_if(PM_ORC), so for them a little dog / dog / large dog / kitten /
+# housecat / large cat corpse carries no aggravate-monster intrinsic and is plain food (150-250 nutrition). The bot
+# refused them for everyone. With the ditch, the abandoned dog met again on Dlvl 2 has gone wild (dog.c
+# mon_catchup_elapsed_time) and is a meal. Our own tame pet is never a target (only hostile kills leave these corpses).
+PET_MEAT = False
+# TIN_FIX (agent.eat_from_inventory, dive_logic.faint_guard): a tin without a tin opener takes 10..10+500/(Dex+Str) turns
+# to open (eat.c start_tin: rn1(1 + 500 / (Dex + Str), 10), with usedtime reset to 0 at every new attempt), and while
+# Fainting a faint interrupts the opening every few turns, so it never opens. The bot ate carried food in pack order,
+# so a carried tin was 'opened' again and again, and faint_guard never held Elbereth while any food was carried: g0c
+# cav-dwa-law-fem s70 tried its tin 9 times in 110 turns while standing on a food ration, fainted next to a newt and a
+# gecko off Elbereth and died (1 of 357 current Caveman games and 8 of 1,163 older ones end in this loop; no other
+# role's death window shows it). With the flag: tins are not food while Fainting (for both strategies), carried food is
+# eaten biggest first with tins last, and Weak or worse we first eat non-corpse food lying under us (not in a shop).
+TIN_FIX = False
 
 _raw = os.environ.get('JF_CFG')
 if _raw:

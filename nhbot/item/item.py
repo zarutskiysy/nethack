@@ -275,9 +275,13 @@ class Item:
         if self.is_container():
             return False
 
-        if self.is_unambiguous() and self.object.name == 'bag of tricks':
+        objs = self.objs   # (PERF: is_unambiguous() / .object inlined, and a loop for the any() generator)
+        if len(objs) == 1 and objs[0].name == 'bag of tricks':
             return False
-        return any((isinstance(obj, O.Container) for obj in self.objs))
+        for obj in objs:
+            if isinstance(obj, O.Container):
+                return True
+        return False
 
     def content(self):
         assert self.is_container()

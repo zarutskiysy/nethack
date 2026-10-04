@@ -4,8 +4,10 @@ from .data import *
 from .. import utils
 
 
+# PERF: python and numpy ints are separate keys of one glyph here (functools wraps a lone numpy scalar in a
+# _HashedSeq, which never equals a bare int): room for both, or the cache thrashed (a pure function either way)
 @utils.copy_result
-@functools.lru_cache(len(objects))
+@functools.lru_cache(len(objects) * 4)
 def possibilities_from_glyph(i):
     assert nh.glyph_is_object(i)
     obj_id = nh.glyph_to_obj(i)

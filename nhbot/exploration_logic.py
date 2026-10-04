@@ -14,6 +14,9 @@ from .item import Item
 from .level import Level
 from .strategy import Strategy
 
+# PERF (to_search_func): utils.translate pads with 0; glyph 0 must match neither mask for the padded-count shortcut
+_FAST_SEARCH_PRIO = 0 not in G.STONE and 0 not in G.WALL
+
 
 class ExplorationLogic:
     def __init__(self, agent):
@@ -392,6 +395,9 @@ class ExplorationLogic:
             if not stone.any() and not doors.any():
                 return stone
 
+            if _FAST_SEARCH_PRIO:
+                # PERF: next to unseen stone (8 neighbours) or a closed door (4) -- the translate loop below, as counts
+                return (utils.neighbor_count8(stone) > 0) | (utils.neighbor_count4(doors) > 0)
             to_visit = np.zeros((C.SIZE_Y, C.SIZE_X), dtype=bool)
             tmp = np.zeros((C.SIZE_Y, C.SIZE_X), dtype=bool)
             for dy in [-1, 0, 1]:
@@ -413,8 +419,13 @@ class ExplorationLogic:
             counts = level.search_count[level.search_count > 0]
             search_diff = 0
             if len(counts):
-                search_diff = np.max(counts) - np.quantile(counts, 0.3)
-                self.agent.stats_logger.log_max_value('search_diff', search_diff)
+                # PERF: quantile(counts, 0.3) >= min(counts), so search_diff <= max - min: when that is <= 400 the test
+                # below fails whatever the quantile is -- skip it (it fed only the never-read stats logger otherwise)
+                if _FAST_SEARCH_PRIO and int(np.max(counts)) - int(np.min(counts)) <= 400:
+                    pass
+                else:
+                    search_diff = np.max(counts) - np.quantile(counts, 0.3)
+                    self.agent.stats_logger.log_max_value('search_diff', search_diff)
 
             if search_diff > 400 and self.agent.blstats.hitpoints == self.agent.blstats.max_hitpoints\
                     and level.search_count[self.agent.blstats.y, self.agent.blstats.x] == np.max(counts):
@@ -427,19 +438,27 @@ class ExplorationLogic:
             # is_on_corridor = utils.isin(level.objects, G.CORRIDOR)
             is_on_door = utils.isin(level.objects, G.DOORS)
 
-            stones = np.zeros((C.SIZE_Y, C.SIZE_X), np.int32)
-            walls = np.zeros((C.SIZE_Y, C.SIZE_X), np.int32)
+            if _FAST_SEARCH_PRIO:
+                # PERF: the same neighbour counts from padded slices (translate pads with glyph 0 / False, which is
+                # neither stone nor wall nor walkable -- checked at import)
+                stones = utils.neighbor_count8(utils.isin(level.objects, G.STONE))
+                walls = utils.neighbor_count8(utils.isin(level.objects, G.WALL))
+                prio += (is_on_door & (stones > 3)) * 250
+                prio += (utils.neighbor_count4(level.walkable) <= 1) * 250
+            else:
+                stones = np.zeros((C.SIZE_Y, C.SIZE_X), np.int32)
+                walls = np.zeros((C.SIZE_Y, C.SIZE_X), np.int32)
 
-            tmp = np.zeros((C.SIZE_Y, C.SIZE_X), dtype=self.agent.glyphs.dtype)
-            for dy in [-1, 0, 1]:
-                for dx in [-1, 0, 1]:
-                    if dy != 0 or dx != 0:
-                        stones += utils.isin(utils.translate(level.objects, dy, dx, out=tmp), G.STONE)
-                        walls += utils.isin(utils.translate(level.objects, dy, dx, out=tmp), G.WALL)
+                tmp = np.zeros((C.SIZE_Y, C.SIZE_X), dtype=self.agent.glyphs.dtype)
+                for dy in [-1, 0, 1]:
+                    for dx in [-1, 0, 1]:
+                        if dy != 0 or dx != 0:
+                            stones += utils.isin(utils.translate(level.objects, dy, dx, out=tmp), G.STONE)
+                            walls += utils.isin(utils.translate(level.objects, dy, dx, out=tmp), G.WALL)
 
-            prio += (is_on_door & (stones > 3)) * 250
-            prio += (np.stack([utils.translate(level.walkable, y, x, out=tmp).astype(np.int32)
-                               for y, x in [(1, 0), (-1, 0), (0, 1), (0, -1)]]).sum(0) <= 1) * 250
+                prio += (is_on_door & (stones > 3)) * 250
+                prio += (np.stack([utils.translate(level.walkable, y, x, out=tmp).astype(np.int32)
+                                   for y, x in [(1, 0), (-1, 0), (0, 1), (0, -1)]]).sum(0) <= 1) * 250
             prio[(stones == 0) & (walls == 0)] = -np.inf
 
             prio[~level.walkable | (dis == -1)] = -np.inf

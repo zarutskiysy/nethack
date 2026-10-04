@@ -21,6 +21,8 @@ from nhbot.strategy import Strategy
 
 MELEE_BASHING = frozenset({'dart', 'shuriken', 'boomerang', 'arrow', 'elven arrow', 'orcish arrow',
                            'silver arrow', 'ya', 'crossbow bolt'})
+# MON_SHIELD 1: objects.c SMALL_SHIELD weight -- spell.c percent_success: weight(uarms) > this quarters spell chances
+MON_SHIELD_MAX_WT = 30
 
 
 class Inventory:
@@ -597,6 +599,15 @@ class Inventory:
         dive = getattr(getattr(self.agent, 'global_logic', None), 'dive', None)
         return dive is not None and dive.diving
 
+    @staticmethod
+    def _burned_parse_on():
+        """castle_v2: parse burned engravings once the castle_v2 bundle is active (the castle zone); off elsewhere."""
+        try:
+            from nhbot import castle_v2
+        except Exception:   # (a tree without castle_v2)
+            return False
+        return castle_v2.active()
+
     def get_items_below_me(self, assume_appropriate_message=False):
         if self._blind_look_skip():
             self._blind_look_skipped = True
@@ -619,6 +630,16 @@ class Inventory:
                     assert '"' in self.agent.message[index:]
                     engraving = self.agent.message[index: index + self.agent.message[index:].index('"')]
                     self.engraving_below_me = engraving
+                elif 'Some text has been ' in self.agent.message and 'You read: "' in self.agent.message and \
+                        self._burned_parse_on():
+                    # castle_v2 (active at the castle only): engrave.c read_engr_at reads a BURNED engraving as 'Some
+                    # text has been burned into the floor here.' -- not 'Something is ...' -- so a burned Elbereth was
+                    # parsed as no engraving at all
+                    index = self.agent.message.index('You read: "') + len('You read: "')
+                    if '"' in self.agent.message[index:]:
+                        self.engraving_below_me = self.agent.message[index: index + self.agent.message[index:].index('"')]
+                    else:
+                        self.engraving_below_me = ''
                 else:
                     self.engraving_below_me = ''
 
@@ -1027,6 +1048,8 @@ class Inventory:
     def get_best_armorset(self, items=None, *, return_ac=False, allow_unknown_status=False, armor_up=False):
         if items is None:
             items = self.items
+        # BIMANUAL_KEEP: no shield while the best melee weapon among these items needs both hands
+        no_shield = jf_config.BIMANUAL_KEEP and self._bimanual_best(items)
         items = flatten_items(items)
 
         best_items = [None] * O.ARM_NUM
@@ -1048,6 +1071,17 @@ class Inventory:
             ac = item.get_ac()
 
             if self.agent.character.role == Character.MONK and slot == O.ARM_SUIT:
+                continue
+            if no_shield and slot == O.ARM_SHIELD:
+                continue   # BIMANUAL_KEEP
+
+            # MON_SHIELD (off): spell.c percent_success quarters every spell's chance under a shield heavier than a small
+            # shield (healing 100% -> 65%, and should_cast_heal stops at 20% fail), and uhitm.c find_roll_to_hit gives a
+            # Monk +(XL/3 + 2) to hit only with !uwep && !uarms. 1: no shield heavier than a small one; 2: no shield.
+            # A shield of reflection always stays allowed.
+            if jf_config.MON_SHIELD and slot == O.ARM_SHIELD and self.agent.character.role == Character.MONK and \
+                    item.object.name != 'shield of reflection' and \
+                    (jf_config.MON_SHIELD >= 2 or item.object.wt > MON_SHIELD_MAX_WT):
                 continue
 
             # spell.c percent_success: metallic body armor adds urole.spelarmr (10), metallic gloves 6, and a shield
@@ -1739,6 +1773,33 @@ class Inventory:
         with agent.atom_operation():
             agent.step(A.Command.READ, gen())
         self.items.update(force=True)
+
+    def _bimanual_best(self, items=None):
+        """BIMANUAL_KEEP (jf_config): the best melee weapon among `items` (our pack by default) needs both hands."""
+        try:
+            best = self.get_best_melee_weapon(items=items)
+        except Exception:
+            return False
+        return best is not None and bool(getattr(best.objs[0], 'bi', 0))
+
+    @utils.debug_log('inventory.shed_shield_for_bimanual')
+    @Strategy.wrap
+    def shed_shield_for_bimanual(self):
+        """BIMANUAL_KEEP (jf_config): take a worn shield off (not cursed, hands not welded) while the best melee weapon
+        we carry needs both hands -- inventory.wield refuses a two-hander over a shield, so every fight was fought with
+        whatever the dive left in hand (the pick-axe). get_best_armorset then never puts a shield back on."""
+        agent = self.agent
+        shield = self.items.off_hand
+        if not jf_config.BIMANUAL_KEEP or shield is None or shield.status == Item.CURSED or \
+                agent.blstats.time < getattr(self, '_bimanual_shed_until', -1) or agent.hands_welded() or \
+                agent.character.prop.polymorph or not self._bimanual_best():
+            yield False
+            return
+        yield True
+        agent.log(f'BIMANUAL_KEEP taking off {shield.text!r}: the best weapon needs both hands')
+        if not self.takeoff(shield):
+            # (a refusal: cursed after all, or no time passed -- don't retry every step)
+            self._bimanual_shed_until = agent.blstats.time + 100
 
     @utils.debug_log('inventory.wear_best_stuff')
     @Strategy.wrap

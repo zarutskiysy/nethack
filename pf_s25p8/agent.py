@@ -2562,8 +2562,7 @@ class Agent:
                         self.log('PIT fight: in a pit beside an attacker, no stepping out')
                     actions = stay
 
-            # FEYE_TELE: the same filter once the eye's corpse has nothing left to give (telepathy is ours)
-            feye_tele = jf_config.FEYE_TELE and not jf_config.FEYE_FIX and self.character.telepathic
+            feye_tele = self._feye_tele_on()
             if (jf_config.FEYE_FIX or feye_tele) and not self.character.prop.blind:
                 # never melee a floating eye we can see: its passive gaze freezes us for up to 127 turns. The
                 # exploration's stall breaker (allow_attack_all, below) keeps only attacks, and the eye's -110
@@ -2667,6 +2666,16 @@ class Agent:
             Agent._GAS_SPORE = MON.from_name('gas spore')
         return 0 <= y < self.glyphs.shape[0] and 0 <= x < self.glyphs.shape[1] and \
             self.glyphs[y, x] == Agent._GAS_SPORE and combat.fight_heur.spore_blast_hits_friend(self, y, x)
+
+    def _feye_tele_on(self):
+        """fight2's FEYE_TELE rule set (no melee at a visible floating eye except blindfolded / boxed in) is on."""
+        # FEYE_TELE: the same filter once the eye's corpse has nothing left to give (telepathy is ours)
+        feye_tele = jf_config.FEYE_TELE and not jf_config.FEYE_FIX and self.character.telepathic
+        # KNI_FEYE_TELE (daglar bcc73f3 / eL1fe bd8cb7c): a Knight uses it before telepathy too
+        if jf_config.KNI_FEYE_TELE and jf_config.FEYE_TELE and not jf_config.FEYE_FIX and \
+                self.character.role == Character.KNIGHT:
+            feye_tele = True
+        return feye_tele
 
     _FLOATING_EYE = None
 

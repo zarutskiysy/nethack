@@ -31,6 +31,25 @@ def _warm_jit() -> None:
         pass
 
 
+_GC_FROZEN = False
+
+
+def _freeze_gc() -> None:
+    """PERF: move everything alive after the imports (modules, numba, scipy, NLE: ~10^6 objects) to the permanent
+    generation, so the cyclic GC's full collections stop rescanning it (~3% of a game's CPU). No object is freed
+    or kept differently during play: only garbage cycles created at import time are never reclaimed."""
+    global _GC_FROZEN
+    if _GC_FROZEN:
+        return
+    _GC_FROZEN = True
+    try:
+        import gc
+        gc.collect()
+        gc.freeze()
+    except Exception:
+        pass
+
+
 class AgentHang(autoascend_agent.AgentPanic):
     """Injected into an agent thread that stopped producing actions (a livelock)."""
 
@@ -67,6 +86,9 @@ class ArenaEnvAdapter:
     AutoAscend's blocking env.step(action) call is translated into one action returned from
     Bot.act(...), then resumed when the arena supplies the next observation.
     """
+
+    # step() returns fresh copies the caller owns (Agent.step skips its own copy)
+    returns_private_observation = True
 
     def __init__(self) -> None:
         self._actions: queue.Queue[Any] = queue.Queue(maxsize=1)
@@ -135,6 +157,7 @@ class AutoAscendDriver:
     def __init__(self, action_timeout: float = 100.0, hang_timeout: float = 20.0) -> None:
         if jf_config.WARM_JIT:
             _warm_jit()
+        _freeze_gc()
         self._action_timeout = action_timeout
         self._hang_timeout = hang_timeout
         self._warm = False  # set once any agent in this process produced an action

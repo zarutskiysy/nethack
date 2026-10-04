@@ -2,7 +2,6 @@ from collections import defaultdict
 from itertools import product
 
 import numpy as np
-from scipy import signal
 
 from ..glyph import G, MON, Hunger
 from .. import jf_config, utils
@@ -158,6 +157,99 @@ def ranger_point_blank_priority(agent, monster, default):
         return default
 
 
+# ---- RAN_ARCHERY (jf_config; research/ran_kit.md) ----
+
+def _ran_archery_active(agent):
+    """RAN_ARCHERY is on for this (unpolymorphed) Ranger now (RAN_ARCHERY_DIVE_ONLY: only while diving)."""
+    if not jf_config.RAN_ARCHERY:
+        return False
+    if agent.character.role != agent.character.RANGER or agent.character.prop.polymorph:
+        return False
+    if jf_config.RAN_ARCHERY_DIVE_ONLY and not getattr(agent.global_logic.dive, 'diving', False):
+        return False
+    return True
+
+
+def ranger_ammo_count(agent, launcher):
+    """Missiles this launcher fires, carried (bags included, as get_best_ranged_set sees them), not unpaid."""
+    from ..item import flatten_items
+    n = 0
+    for item in flatten_items(agent.inventory.items):
+        if item.shop_status != Item.UNPAID and item.is_fired_projectile(launcher):
+            n += int(item.count)
+    return n
+
+
+def ranger_target_worthy(agent, monster):
+    """RAN_ARCHERY: a monster worth a turn's launcher swap -- an Elbereth-ignorer, an insect or hostile domestic animal
+    (is_dangerous_monster), or permonst difficulty >= RAN_ARCHERY_MIN_DIFF. Never the weak, passive-only and exploding
+    kinds (ranged_priority's own defaults) nor a were: the swap's free bite is the lycanthropy risk (mhitu.c AD_WERE),
+    and the dagger is already in hand."""
+    _, _, _, mon, _ = monster
+    name = getattr(mon, 'mname', '')
+    if name in WEAK_MONSTERS or name in ONLY_RANGED_SLOW_MONSTERS or name in EXPLODING_MONSTERS or \
+            'were' in name or name == 'unknown':
+        return False
+    if agent.global_logic.dive._melee_ignores_elbereth(mon):
+        return True
+    if is_dangerous_monster(monster):
+        return True
+    return int(getattr(mon, 'difficulty', 0) or 0) >= int(jf_config.RAN_ARCHERY_MIN_DIFF)
+
+
+def ranger_swap_ok(agent, launcher, ammo, monster, dis):
+    """RAN_ARCHERY: take the launcher up for this target, `dis` (1 or 2) squares away -- the best ranged set is a
+    launcher not in hand with >= RAN_ARCHERY_MIN_AMMO matching missiles, no known-cursed weapon holds the hand (wield.c:
+    a welded weapon can't be put away), no swap failed lately, and the target is worth it."""
+    try:
+        if dis > 2 or not _ran_archery_active(agent):
+            return False
+        if launcher is None or ammo is None or launcher.equipped or not ammo.is_fired_projectile(launcher):
+            return False
+        main = agent.inventory.items.main_hand
+        if main is not None and main.status == Item.CURSED:
+            return False
+        if agent.blstats.time < getattr(agent, '_ran_swap_block_until', -1):
+            return False
+        if ranger_ammo_count(agent, launcher) < int(jf_config.RAN_ARCHERY_MIN_AMMO):
+            return False
+        return ranger_target_worthy(agent, monster)
+    except Exception:
+        return False
+
+
+def ranger_swap_priority(agent, monster, default, dis):
+    """RAN_ARCHERY: next to us, the point-blank shot's priority (one above melee, + AT_FOCUS on a focus ignorer, as
+    melee gets it): the 'ranged' action then wields the launcher and fires from the next turn on. Two squares away,
+    the unwielded launcher's -5 is dropped, so the swap comes before the monster closes in."""
+    try:
+        if dis == 2:
+            return default + 5
+        ret = ranger_point_blank_priority(agent, monster, default)
+        if ret != default and focus_ignorer(agent, monster[3]):
+            ret += jf_config.AT_FOCUS
+        return ret
+    except Exception:
+        return default
+
+
+def ranger_focus(agent, monster, pri):
+    """RAN_ARCHERY with the launcher in hand: a point-blank shot at an Elbereth-ignorer gets AT_FOCUS as melee does
+    (otherwise melee's 16 + AT_FOCUS beat the shot's 17 and fight2 swapped to the dagger for every elf or soldier)."""
+    try:
+        if _ran_archery_active(agent) and focus_ignorer(agent, monster[3]):
+            return pri + jf_config.AT_FOCUS
+    except Exception:
+        pass
+    return pri
+
+
+def ranger_swap_blocked(agent, launcher):
+    """RAN_ARCHERY: a launcher swap failed lately (a weapon welded to the hand): no 'ranged' plan that starts with one."""
+    return launcher is not None and not launcher.equipped and _ran_archery_active(agent) and \
+        agent.blstats.time < getattr(agent, '_ran_swap_block_until', -1)
+
+
 VOLLEY_DAGGERS = frozenset(('dagger', 'orcish dagger', 'elven dagger', 'silver dagger', 'athame'))
 
 
@@ -267,6 +359,8 @@ def ranged_priority(agent, dy, dx, monsters):
         return None
 
     if launcher is not None and not launcher.equipped:
+        if jf_config.RAN_ARCHERY and ranger_swap_blocked(agent, launcher):
+            return None   # RAN_ARCHERY: the launcher can't come up (welded weapon): no arrows thrown by hand
         ret -= 5
 
     y, x = agent.blstats.y, agent.blstats.x
@@ -321,6 +415,10 @@ def ranged_priority(agent, dy, dx, monsters):
                     return None
             if dis == 1 and ranger_point_blank(agent, launcher, ammo):
                 ret = ranger_point_blank_priority(agent, monster[0], ret)
+                if jf_config.RAN_ARCHERY:
+                    ret = ranger_focus(agent, monster[0], ret)
+            elif jf_config.RAN_ARCHERY and dis <= 2 and ranger_swap_ok(agent, launcher, ammo, monster[0], dis):
+                ret = ranger_swap_priority(agent, monster[0], ret, dis)
             elif dis == 1 and rogue_volley(agent, launcher, ammo):
                 ret = rogue_volley_priority(agent, monster[0], ret)
             elif dis == 1 and tourist_volley(agent, launcher, ammo):
@@ -638,11 +736,18 @@ def _force_bolt_tail_safe(agent, level, shop, y0, x0, sy, sx, reach=FORCE_BOLT_M
     shopkeeper). Refuse a line that reaches a known shop, or two visible objects (shop stock we have not
     entered yet) before a wall; a lone corpse is no reason to melee instead."""
     objects = 0
+    mask_fix = jf_config.SHOP_MASK_FIX
     for k in range(1, reach + 1):
         y, x = y0 + sy * k, x0 + sx * k
         if not (0 <= y < level.walkable.shape[0] and 0 <= x < level.walkable.shape[1]):
             return True
-        if shop is not None and shop[y, x]:
+        # SHOP_MASK_FIX (eL1fe bd8cb7c): a seen wall stops the bolt (zap.c bhit: !ZAP_POS) before the shop beyond it,
+        # and the dilated shop mask also covers the shop's walls and the rock at its corners, where no stock lies: only
+        # a floor square, a doorway or a door (the bolt breaks a closed one) of the shop refuses the line
+        if mask_fix and level.objects[y, x] in G.WALL and agent.glyphs[y, x] in G.WALL:
+            return True
+        if shop is not None and shop[y, x] and \
+                not (mask_fix and not level.walkable[y, x] and agent.glyphs[y, x] not in G.DOOR_CLOSED):
             return False
         # a bolt that kills the target flies on into whatever stands behind it: a jackal's bolt hit the
         # Wizard's own housecat, which turned on it and killed it
@@ -897,11 +1002,11 @@ def goto_action(agent, priority, monsters):
 
 
 def get_corridors_priority_map(walkable):
-    k = np.array([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
-    wall_count = signal.convolve2d((~walkable).astype(int), k, boundary='symm', mode='same')
+    # (PERF: utils.box3_sum_symm == signal.convolve2d(x, ones((3, 3)), boundary='symm', mode='same') on ints)
+    wall_count = utils.box3_sum_symm((~walkable).astype(int))
     corridor_mask = (wall_count == 6).astype(int)
     corridor_mask[~walkable] = 0
-    corridor_dilated = signal.convolve2d(corridor_mask.astype(int), k, boundary='symm', mode='same')
+    corridor_dilated = utils.box3_sum_symm(corridor_mask.astype(int))
     return corridor_mask + corridor_dilated >= 1
 
 

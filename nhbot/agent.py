@@ -6,7 +6,6 @@ from collections import namedtuple, Counter, defaultdict
 from functools import partial
 
 import nle.nethack as nh
-import nltk
 import numpy as np
 from nle.nethack import actions as A
 
@@ -32,6 +31,50 @@ from .strategy import Strategy
 
 BLStats = namedtuple('BLStats',
                      'x y strength_percentage strength dexterity constitution intelligence wisdom charisma score hitpoints max_hitpoints depth gold energy max_energy armor_class monster_level experience_level experience_points time hunger_state carrying_capacity dungeon_number level_number prop_mask alignment')
+
+
+class _NoStepCalls:
+    """Agent.disallow_step_calling(): no env steps inside the block (a nested block leaves the flag to the outer one)."""
+    __slots__ = ('_agent', '_owner')
+
+    def __init__(self, agent):
+        self._agent = agent
+        self._owner = False
+
+    def __enter__(self):
+        if not self._agent._no_step_calls:
+            self._owner = True
+            self._agent._no_step_calls = True
+
+    def __exit__(self, exc_type, exc, tb):
+        if self._owner:
+            self._agent._no_step_calls = False
+        return False
+
+
+def _format_panic(exc, limit):
+    """traceback.format_exception(type(exc), exc, exc.__traceback__, limit=limit) for the dev log, minus the 3.11
+    column carets (PERF: locating them walks co_positions() of every frame -- dive_logic's huge functions -- and
+    re-parses each source line; a game logs hundreds of panics). Same frames, source lines and exception chain."""
+    import traceback
+    out = []
+    seen = set()
+
+    def fmt(e):
+        seen.add(id(e))
+        if e.__cause__ is not None and id(e.__cause__) not in seen:
+            fmt(e.__cause__)
+            out.append('\nThe above exception was the direct cause of the following exception:\n\n')
+        elif e.__context__ is not None and not e.__suppress_context__ and id(e.__context__) not in seen:
+            fmt(e.__context__)
+            out.append('\nDuring handling of the above exception, another exception occurred:\n\n')
+        if e.__traceback__ is not None:
+            out.append('Traceback (most recent call last):\n')
+            out.extend(traceback.StackSummary.extract(traceback.walk_tb(e.__traceback__), limit=limit).format())
+        out.extend(traceback.format_exception_only(type(e), e))
+
+    fmt(exc)
+    return ''.join(out)
 
 
 class Agent:
@@ -150,17 +193,10 @@ class Agent:
 
     ######## CONVENIENCE FUNCTIONS
 
-    @contextlib.contextmanager
     def disallow_step_calling(self):
-        if self._no_step_calls:
-            yield
-            return
-
-        try:
-            self._no_step_calls = True
-            yield
-        finally:
-            self._no_step_calls = False
+        # PERF: a plain context manager class instead of a @contextlib.contextmanager generator (built for every
+        # strategy condition check); same effect: the outermost one sets _no_step_calls and clears it on exit
+        return _NoStepCalls(self)
 
     @contextlib.contextmanager
     def atom_operation(self, allow_update=False):
@@ -328,13 +364,19 @@ class Agent:
         self.monster_tracker.on_panic()
         self.update_state()
 
+    _MARKER_RE_BYTES = re.compile(rb"(--More--|\(end\)|\(\d+ of \d+\))")   # _find_marker's regex, for bytes
+
     @staticmethod
     def _find_marker(lines, regex=re.compile(r"(--More--|\(end\)|\(\d+ of \d+\))")):
         """ Return (line, column) of markers:
         --More-- | (end) | (X of N)
         """
-        if len(regex.findall(' '.join(lines))) > 1:
+        n_markers = len(regex.findall(' '.join(lines)))
+        if n_markers > 1:
             raise ValueError('Too many markers')
+        if n_markers == 0:
+            # PERF: a marker inside one line is a substring of the joined screen, so none there means none below
+            return None, None
 
         result, marker_type = None, None
         for i, line in enumerate(lines):
@@ -363,7 +405,21 @@ class Agent:
         # assert '\n' not in message and '\r' not in message
         popup = []
 
-        lines = [bytes(line).decode().replace('\0', ' ').replace('\n', '') for line in obs['tty_chars']]
+        tty = obs['tty_chars']
+        if tty.dtype == np.uint8 and tty.ndim == 2:
+            # PERF: one tobytes() of the screen, then the same per-row decode (bytes(row) == row.tobytes())
+            raw, width = tty.tobytes(), tty.shape[1]
+            if raw.isascii():
+                # PERF: no marker on an ASCII screen (the common case) -> done, without building the str lines.
+                # Byte for byte the string _find_marker searches: ASCII decodes 1:1, and replacing NUL / dropping
+                # newlines commutes with the ' ' join
+                joined = b' '.join([raw[i:i + width] for i in range(0, len(raw), width)])
+                if not self._MARKER_RE_BYTES.search(joined.replace(b'\0', b' ').replace(b'\n', b'')):
+                    return message, popup, True
+            lines = [raw[i:i + width].decode().replace('\0', ' ').replace('\n', '')
+                     for i in range(0, len(raw), width)]
+        else:
+            lines = [bytes(line).decode().replace('\0', ' ').replace('\n', '') for line in tty]
         marker_pos, marker_type = self._find_marker(lines)
 
         if marker_pos is None:
@@ -446,19 +502,17 @@ class Agent:
             assert len(action) == 1
             action = A.ACTIONS[A.ACTIONS.index(ord(action))]
         observation, reward, done, info = self.env.step(action)
-        observation = {k: v.copy() for k, v in observation.items()}
+        if not getattr(self.env, 'returns_private_observation', False):
+            # (PERF: the arena adapter already hands over private copies -- a second copy is waste)
+            observation = {k: v.copy() for k, v in observation.items()}
         self.step_count += 1
         self._hb_actions[getattr(action, 'name', str(action))] += 1
         self.score += reward
 
         self.cursor_pos = (observation['tty_cursor'][0] - 1, observation['tty_cursor'][1])
 
-        if hasattr(self, 'blstats'):
-            for item in flatten_items(self.inventory.items):
-                if item.category == nh.COIN_CLASS:
-                    self.stats_logger.log_gold(item.count)
-            else:
-                self.stats_logger.log_gold(0)
+        # (PERF: the per-step gold statistic -- StatsLogger.log_gold over a flattened inventory -- is gone: nothing
+        # ever read StatsLogger.gold, and the scan cost a flatten_items per step)
 
         if done:
             raise AgentFinished()
@@ -705,8 +759,9 @@ class Agent:
 
     def call_update_functions(self, funcs=None):
         if funcs is None:
-            funcs = self.on_update
-        assert all((func in self.on_update for func in funcs))
+            funcs = self.on_update   # (PERF: trivially all in self.on_update -- no membership scan)
+        else:
+            assert all((func in self.on_update for func in funcs))
 
         with self.disallow_step_calling():
             for func in funcs:
@@ -745,6 +800,10 @@ class Agent:
         return any(o.name in ('pick-axe', 'dwarvish mattock')
                    for item in flatten_items(self.inventory.items) for o in item.objs)
 
+    # SHOP_MASK_FIX (jf_config; eL1fe bd8cb7c): squares that always bound a shop's fill
+    _SHOP_DOORWAY = frozenset({SS.S_ndoor})
+    _CORRIDOR = frozenset({SS.S_corr, SS.S_litcorr})
+
     def _update_level_shops(self):
         level = self.current_level()
 
@@ -773,6 +832,11 @@ class Agent:
                      (utils.translate(wall_mask, 0, 1) & utils.translate(wall_mask, 0, -1))) & \
                     level.walkable
             walkable = level.walkable & ~entry
+            if jf_config.SHOP_MASK_FIX:
+                # a door or doorway always bounds a room (its wall squares may be unseen: the fill leaked out through
+                # the door into the corridor), and a corridor is never shop floor
+                entry |= utils.isin(level.objects, G.DOOR_OPENED, self._SHOP_DOORWAY) & level.walkable
+                walkable &= ~entry & ~utils.isin(level.objects, self._CORRIDOR)
             mask = utils.bfs(y, x, walkable=walkable, walkable_diagonally=walkable, can_squeeze=False) != -1
             mask = utils.dilate(mask, radius=1)
 
@@ -1087,7 +1151,7 @@ class Agent:
                 level.walkable[y, x] = False  # necessary for the exit route from vaults
 
         # ad aerarium -- avoid valut entrance
-        if self.inventory.engraving_below_me and nltk.edit_distance(self.inventory.engraving_below_me,
+        if self.inventory.engraving_below_me and utils.edit_distance(self.inventory.engraving_below_me,
                                                                     "ad aerarium") <= 6:
             self.stats_logger.log_event('ad_aerarium_below_me')
             for dy, dx in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
@@ -3003,6 +3067,93 @@ class Agent:
         except Exception:
             return False
 
+    _MZ_LARGE = 3   # monflag.h: bigmonst() is msize >= MZ_LARGE
+
+    @staticmethod
+    def _known_uncursed(item):
+        """BUC known good from the item's own text: 'uncursed'/'blessed', or a shown enchantment without 'cursed'
+        (objnam.c doname with implicit_uncursed leaves 'uncursed' out once the enchantment is known -- an
+        Archeologist's starting '+2 bullwhip'). item_manager turns an unknown status into UNCURSED, so the status
+        field alone can't tell a found cursed whip, which applying would weld to the hand (no pick-axe dig after)."""
+        text = (getattr(item, 'text', None) or '').lower()
+        if re.search(r'\bcursed\b', text):
+            return False
+        if re.search(r'\b(uncursed|blessed)\b', text):
+            return True
+        return getattr(item, 'modifier', None) is not None
+
+    def _arc_whip(self):
+        """ARC_WHIP: the bullwhip an Archeologist may apply at a target, or None (see jf_config.ARC_WHIP)."""
+        if self.character.role != Character.ARCHEOLOGIST:
+            return None
+        if self.blstats.time - getattr(self, '_arc_whip_refused', -100) < 20:
+            return None   # the last apply got no direction prompt (a welded hand we didn't know of, ...)
+        if self.blstats.dexterity < jf_config.ARC_WHIP_MIN_DEX:
+            return None   # apply.c use_whip: proficient 0 -- no disarm and no attack, only 'Snap!'
+        prop = self.character.prop
+        if prop.confusion or prop.stun or prop.hallu or prop.polymorph:
+            return None   # use_whip confdir()s the lash; hallucinated glyphs hide the target's size; a polymorphed
+            # form may not wield at all
+        if utils.any_in(self.glyphs, G.SWALLOW):
+            return None   # engulfed: use_whip lashes the engulfer through attack(); fight2's own path handles it
+        items = self.inventory.items
+        main = items.main_hand
+        if main is not None and main.status == Item.CURSED:
+            return None   # wield.c wield_tool: a welded weapon can't be swapped out (no time used, no lash)
+        whip = next((i for i in items if i.is_unambiguous() and i.object.name == 'bullwhip' and
+                     i.status != Item.CURSED and self._known_uncursed(i)), None)
+        if whip is None:
+            return None
+        best = self.inventory.get_best_melee_weapon()
+        if best is not None and best is not whip:
+            return None   # a better weapon found: the old path wields that one
+        return whip
+
+    def _arc_whip_attack(self, y, x):
+        """ARC_WHIP: apply the bullwhip at the target next to us instead of fight2's 'wield, then move into it'.
+        True when the apply was made (one game action), False when the old path should run. See jf_config.ARC_WHIP."""
+        whip = self._arc_whip()
+        if whip is None:
+            return False
+        glyph = self.glyphs[y, x]
+        monster = MON.is_monster(glyph)
+        name = MON.permonst(glyph).mname if monster else 'unknown'
+        if name == 'floating eye':
+            return False   # melee_attack's FEYE_BLIND path (blindfold first) stays in charge
+        if self.in_pit() or self.global_logic.dive._in_own_pit():
+            # use_whip from a pit: a small/medium target is attack()ed (the same hit as moving into it); a large one
+            # gets the whip wrapped round it and yanks us out of the pit beside it -- not for a digger
+            if not monster or MON.permonst(glyph).msize >= self._MZ_LARGE:
+                return False
+            if self.inventory.items.main_hand is whip:
+                return False   # wielded already: the apply would only be the plain attack
+        letter = self.inventory.items.get_letter(whip)
+        direction = self.calc_direction(self.blstats.y, self.blstats.x, y, x)
+        self._note_attack(target=(y, x))
+        with self.atom_operation():
+            self.step(A.Command.APPLY)
+            self.type_text(letter)
+            prompted = self.single_message.startswith('In what direction')
+            if prompted:
+                self.direction(direction)
+            else:
+                self.step(A.Command.ESC)
+        msg = self.message
+        n = getattr(self, '_arc_whip_count', 0) + 1
+        self._arc_whip_count = n
+        if not prompted:
+            self.log(f'ARC_WHIP no lash at the {name} ({msg!r}): back to the old path')
+            self._arc_whip_refused = self.blstats.time
+            return False
+        msg = msg or ''
+        outcome = 'yanked out of the pit' if 'yank yourself out' in msg else \
+            'disarm' if re.search(r'You (yank|snatch) ', msg) else 'slipped free' if 'slips free' in msg else 'attack'
+        if outcome == 'disarm':
+            self._arc_whip_disarms = getattr(self, '_arc_whip_disarms', 0) + 1
+        if n <= 50 or outcome != 'attack':
+            self.log(f'ARC_WHIP {outcome} at the {name} {direction} (use {n}): {msg[:100]!r}')
+        return True
+
     def _touch_petrifies(self, action):
         # hitting a cockatrice bare-handed (Monk martial arts) or kicking it
         # barefoot turns you to stone on the spot
@@ -3029,6 +3180,8 @@ class Agent:
             _, dy, dx = best_action
             target_y = self.blstats.y + dy
             target_x = self.blstats.x + dx
+            if jf_config.ARC_WHIP and self._arc_whip_attack(target_y, target_x):
+                return 0
             if not self._keep_digging_tool_wielded() and self.wield_best_melee_weapon():
                 return wait_counter
             with self.env.debug_tiles([[self.blstats.y, self.blstats.x],
@@ -3051,6 +3204,12 @@ class Agent:
             assert ammo is not None
             if launcher is not None and not launcher.equipped:
                 if self.inventory.wield(launcher):
+                    return wait_counter
+                if jf_config.RAN_ARCHERY and combat.fight_heur._ran_archery_active(self):
+                    # RAN_ARCHERY: the launcher didn't come up (a weapon welded to the hand): no arrows thrown by
+                    # hand (no multishot, -4 to-hit, d2: dothrow.c / uhitm.c), and no swap plan for a while
+                    self._ran_swap_block_until = self.blstats.time + jf_config.RAN_ARCHERY_BLOCK_TURNS
+                    self.log(f'RAN_ARCHERY no launcher swap: {self.message.strip()[:100]!r}')
                     return wait_counter
             with self.env.debug_tiles([[target_y, target_x]], (0, 0, 255, 255), mode='frame'):
                 dir = self.calc_direction(self.blstats.y, self.blstats.x, target_y, target_x,
@@ -3189,7 +3348,8 @@ class Agent:
 
         # aggravate monster
         if monster_id in [MON.id_from_name(name) for name in ['dog', 'little dog', 'large dog',
-                                                              'kitten', 'housecat', 'large cat']]:
+                                                              'kitten', 'housecat', 'large cat']] and \
+                not (jf_config.PET_MEAT and self._cannibal_allowed()):
             return 'aggravate'
 
         # teleportitis
@@ -3846,6 +4006,15 @@ class Agent:
                             self.type_text(self.inventory.items.get_letter(item))
                         return
 
+        # LOWHP_GAMBLE (off): the same unknown-item gambles above pray.c's critical HP, on a burst or the old 'HP < 12'
+        # line, while diving with an Elbereth-ignorer next to us (see jf_config.LOWHP_GAMBLE)
+        if jf_config.LOWHP_GAMBLE and not poly_buffer:
+            plan = self._lowhp_gamble_plan()
+            if plan is not None:
+                yield True
+                self._lowhp_gamble_act(plan)
+                return
+
         # if self.inventory.engraving_below_me.lower() != 'elbereth' and self.can_engrave() and \
         #         (self.blstats.hitpoints < 1 / 5 * self.blstats.max_hitpoints or self.blstats.hitpoints < 5):
         #     yield True
@@ -3857,6 +4026,100 @@ class Agent:
         #     return
 
         yield False
+
+    def _lowhp_gamble_due(self):
+        """LOWHP_GAMBLE: (adjacent hostiles, 'burst' | 'low', HP lost) when the last resort's unknown-item gambles should
+        fire although pray.c sees no HP trouble yet, else None. See jf_config.LOWHP_GAMBLE."""
+        if not (jf_config.LOWHP_GAMBLE and jf_config.LAST_RESORT):
+            return None
+        dive = self.global_logic.dive
+        bl = self.blstats
+        if not dive.diving or bl.depth < jf_config.LOWHP_GAMBLE_MIN_DEPTH or bl.carrying_capacity >= 4:
+            return None   # (Overtaxed+: zapping, reading and quaffing are refused without a turn)
+        if self._critically_low_hp() or self.character.prop.polymorph:
+            return None   # critical: the last resort proper (its prayers first); a were form's HP is a buffer
+        hp, maxhp = int(bl.hitpoints), int(bl.max_hitpoints)
+        prev = [h for t, h in dive._hp_history if t >= bl.time - jf_config.KNOWN_ITEMS_BURST_TURNS]
+        loss = (max(prev) - hp) if prev else 0
+        burst = loss > 0 and loss >= hp and hp < jf_config.KNOWN_ITEMS_BURST_FRAC * maxhp
+        low = hp < 12 and hp < maxhp   # DT6A's rule: where LOWHP_CRIT_XL now holds the (useless) prayer back
+        if not (burst or low):
+            return None
+        pos = (bl.y, bl.x)
+        adjacent = [m for m in self.get_visible_monsters() if utils.adjacent((m[1], m[2]), pos)]
+        if not adjacent:
+            return None
+        ignorer = any(dive._melee_ignores_elbereth(m[3]) for m in adjacent)
+        futile = ignorer or self.character.prop.blind or not self.can_engrave() or \
+            ((self.inventory.engraving_below_me or '').lower() == 'elbereth' and self._hurt_recently(2))
+        if not futile:
+            return None   # Elbereth holds what is next to us: dive/fight2 write and rest on it
+        return adjacent, ('burst' if burst else 'low'), loss
+
+    def _lowhp_gamble_plan(self):
+        """LOWHP_GAMBLE: ('quaff' | 'zap' | 'read', item, extra) or None. Potions first (they touch only us), then an
+        unknown wand at the strongest Elbereth-ignorer next to us with KNOWN_ITEMS_RAY_RUN free squares behind it (a
+        bounced 6d6 ray kills at this HP), then scrolls (not blind: an unread label can't be read blind)."""
+        due = self._lowhp_gamble_due()
+        if due is None:
+            return None
+        adjacent, why, loss = due
+        items = list(self.inventory.items)
+        for item in items:
+            if item.category == nh.POTION_CLASS and not item.is_unambiguous():
+                return ('quaff', item, why)
+        dive = self.global_logic.dive
+        watch = combat.fight_heur.missiles_risk_the_watch(self)
+        if not watch:
+            targets = [m for m in adjacent if dive._melee_ignores_elbereth(m[3])] or adjacent
+            target = max(targets, key=lambda m: getattr(m[3], 'mlevel', 0))
+            dy = int(target[1]) - int(self.blstats.y)
+            dx = int(target[2]) - int(self.blstats.x)
+            if self._free_run(int(target[1]), int(target[2]), dy, dx) >= jf_config.KNOWN_ITEMS_RAY_RUN:
+                for item in items:
+                    if item.category == nh.WAND_CLASS and not item.is_unambiguous() and \
+                            not self.inventory.is_known_empty(item) and item.comment != 'EMPT' and \
+                            not (jf_config.LR_WAND_ONCE and item.glyphs[0] in self._last_resort_zapped):
+                        return ('zap', item, (target, why))
+        if not watch and not self.character.prop.blind:
+            for item in items:
+                if item.category == nh.SCROLL_CLASS and not item.is_unambiguous():
+                    return ('read', item, why)
+        return None
+
+    def _free_run(self, y, x, dy, dx, cap=20):
+        """Walkable squares beyond (y, x) in direction (dy, dx) before a wall or the map's edge (known_items'
+        _free_run_behind)."""
+        level = self.current_level()
+        h, w = level.walkable.shape
+        n = 0
+        while n < cap:
+            y, x = y + dy, x + dx
+            if not (0 <= y < h and 0 <= x < w) or not level.walkable[y, x]:
+                break
+            n += 1
+        return n
+
+    def _lowhp_gamble_act(self, plan):
+        what, item, extra = plan
+        bl = self.blstats
+        tag = f'LOWHP_GAMBLE ({extra if isinstance(extra, str) else extra[1]}, hp {bl.hitpoints}/{bl.max_hitpoints})'
+        if what == 'quaff':
+            self.log(f'{tag}: quaffing unknown {item.text!r}')
+            self.inventory.quaff(item)
+        elif what == 'zap':
+            target, _ = extra
+            self._last_resort_zapped.add(item.glyphs[0])
+            self.log(f'{tag}: zapping unknown {item.text!r} at the {getattr(target[3], "mname", "?")}')
+            self.zap(item, self.calc_direction(bl.y, bl.x, int(target[1]), int(target[2])))
+        else:
+            self.log(f'{tag}: reading unknown {item.text!r}')
+            if jf_config.GENOCIDE_POLICY:
+                from . import opp_items
+                opp_items.note_read(self, item, 'lowhp gamble')
+            with self.atom_operation():
+                self.step(A.Command.READ)
+                self.type_text(self.inventory.items.get_letter(item))
 
     @utils.debug_log('eat_from_inventory')
     @Strategy.wrap
@@ -3875,13 +4138,67 @@ class Agent:
                 (self.blstats.hunger_state == Hunger.HUNGRY or self.is_safe_to_pray(self.SAFE_HUNGER_PRAYER_GAP)) \
                 and not (self.blstats.hunger_state >= Hunger.WEAK and self._eat_before_praying()):
             yield False
-        for item in self.edible_carried_food():
+        for item in (self.ready_food() if jf_config.TIN_FIX else self.edible_carried_food()):
             yield True
             if jf_config.FOOD_LOG:
                 self.log(f'FOOD eat inv {item.text!r} hunger={self.blstats.hunger_state} diving={diving}')
+            if jf_config.TIN_FIX:
+                self.log(f'TIN_FIX eating {item.text!r} ({"floor" if item not in self.inventory.items.all_items else "pack"}, '
+                         f'hunger {self.blstats.hunger_state})')
             self.inventory.eat(item)
             return
         yield False
+
+    def _cannibal_allowed(self):
+        """eat.c CANNIBAL_ALLOWED(): Role_if(PM_CAVEMAN) || Race_if(PM_ORC)."""
+        try:
+            return self.character.role == Character.CAVEMAN or self.character.race == Character.ORC
+        except Exception:
+            return False
+
+    _TIN_FIX_FLOOR_SKIP = ('sprig of wolfsbane', 'egg', 'tin')
+
+    def _food_nutrition(self, item):
+        """Nutrition of one unit (corpses by their monster, unidentified or variable items as 0)."""
+        try:
+            if item.is_corpse():
+                return getattr(MON.permonst(item.monster_id + nh.GLYPH_MON_OFF), 'cnutrit', 0)
+            if item.is_unambiguous():
+                return getattr(item.object, 'nutrition', 0) or 0
+        except Exception:
+            pass
+        return 0
+
+    @staticmethod
+    def _is_tin(item):
+        return any(getattr(o, 'name', '') == 'tin' for o in item.objs)
+
+    def ready_food(self):
+        """TIN_FIX: what eat_from_inventory eats now, in its order. Weak or worse: non-corpse food lying under us first
+        (not a shop's, no egg -- it may be a cockatrice's -- no glob, no tin); then edible_carried_food biggest first,
+        tins last; while Fainting no tin at all (eat.c start_tin: 10+ turns without an opener, restarted after every
+        faint, so it never opens)."""
+        bl = self.blstats
+        fainting = bl.hunger_state >= Hunger.FAINTING
+        out = []
+        if bl.hunger_state >= Hunger.WEAK:
+            try:
+                for item in self.inventory.items_below_me or []:
+                    if item.category != nh.FOOD_CLASS or item.is_corpse() or item.shop_status != Item.NOT_SHOP or \
+                            not item.is_unambiguous():
+                        continue
+                    name = item.object.name
+                    if name in self._TIN_FIX_FLOOR_SKIP or name.startswith('glob of'):
+                        continue
+                    out.append(item)
+            except Exception:
+                out = []
+            if self.current_level().shop[bl.y, bl.x]:
+                out = []
+        carried = [item for item in self.edible_carried_food() if not (fainting and self._is_tin(item))]
+        carried.sort(key=lambda i: (self._is_tin(i), -self._food_nutrition(i)))
+        out.sort(key=lambda i: -self._food_nutrition(i))
+        return out + carried
 
     @utils.debug_log('eat_deep')
     @Strategy.wrap
@@ -4107,8 +4424,7 @@ class Agent:
             if jf_log.enabled():
                 import traceback
                 deep = type(exc).__name__ == 'AgentHang'
-                tb = ''.join(traceback.format_exception(type(exc), exc, exc.__traceback__,
-                                                        limit=None if deep else -6))
+                tb = _format_panic(exc, limit=None if deep else -6)
                 self.log(f'PANIC {type(exc).__name__}: {str(exc)[:300]}\n{tb[-(12000 if deep else 1500):]}')
             self._note_repeated_panic(exc)
             if self.verbose:

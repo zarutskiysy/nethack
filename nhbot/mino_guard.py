@@ -20,6 +20,7 @@ While a minotaur is in view within MINO_RANGE (one action per step; best first):
   1. a known wand of digging zapped down (not on the castle: Can_dig_down is false there);
   2. a known wand at it in a straight line: teleportation / polymorph (beams, no bounce), sleep (a ray: it hits the
      minotaur first; a bounce may put us to sleep too, but its sleep adds up on the way back);
+ 2a. MON_SLEEP_FIGHT (off): a Monk's sleep spell at it in line (a Monk resists its own ray);
   3. on an up staircase: climb (a minotaur has no M2_STALK: it never follows); that '>' is then avoided a while;
   4. where teleports work (not the castle, Medusa, the Valley, Sokoban): a known wand of teleportation at ourselves,
      a known scroll of teleportation (a cursed one level-teleports -- away too);
@@ -244,6 +245,25 @@ class MinoGuard:
         return bool(jf_config.DESPERATE_PRAYER_GAP) and agent._critically_low_hp() and \
             agent.current_level().dungeon_number != GEHENNOM and self.dive.diving and bl.depth >= 5 and \
             agent.is_safe_to_pray(jf_config.DESPERATE_PRAYER_GAP)
+
+    def _sleep_spell(self):
+        """MON_SLEEP_FIGHT: a Monk can cast its sleep spell now -- known, 5 Pw, at most 30% fail (a robe makes it 0%,
+        a heavy shield up to 56%), not Stressed (spell.c: 'Your concentration falters'), not Fainting, and no
+        refusal / confusion / stun (fight_heur._fb_cannot_cast)."""
+        if not jf_config.MON_SLEEP_FIGHT:
+            return False
+        agent = self.agent
+        from .character import Character
+        ch = agent.character
+        if getattr(ch, 'role', None) != Character.MONK or 'sleep' not in (getattr(ch, 'known_spells', None) or {}):
+            return False
+        bl = agent.blstats
+        if bl.energy < 5 or bl.carrying_capacity >= 2 or bl.hunger_state >= 4:   # glyph.Hunger.FAINTING
+            return False
+        if (getattr(ch, 'spell_fail_chance', None) or {}).get('sleep', 1) > 0.3:
+            return False
+        from .combat import fight_heur
+        return not fight_heur._fb_cannot_cast(agent)
 
     def reserved(self, item):
         """fight2 (fight_heur.get_potential_wand_usages) must not zap this at a monster: a known wand of death -- the
@@ -483,6 +503,12 @@ class MinoGuard:
             wand, name = self._wand(('teleportation', 'polymorph', 'sleep'))
             if wand is not None:
                 yield ('zap', (wand, direction, m), f'known {name} at {dist}')
+        # 2a. MON_SLEEP_FIGHT: a Monk's sleep spell at it in line -- (XL/2 + 1)d25 turns frozen (zap.c buzz: the spell's
+        # ray is a 'sleep ray' too, so _note() sees the hit and the frozen-minotaur dig-out above follows), and its own
+        # bounce can't hurt a Monk (attrib.c mon_abil: sleep resistance at XL 1)
+        if lines and self._sleep_spell():
+            (direction, dist, (sy, sx)), m = lines[0]
+            yield ('cast_sleep', ((sy, sx), m), f'sleep spell at {dist}')
         # 2b. HORN_SCARE: an expensive camera in line within 2 squares (uhitm.c flash_hits_mon: dist2 < 9 -> flees 3
         # times in 4; blinded, for good when adjacent)
         if kit.get('camera') and lines:
@@ -680,6 +706,13 @@ class MinoGuard:
                 agent.inventory.empty_wands.add(wand.text)
             self._note()
             agent.inventory.items.update(force=True)
+            return
+        if kind == 'cast_sleep':
+            (sy, sx), m = arg
+            agent.log(f'MINO casting sleep {(sy, sx)} at the minotaur at {(m[1], m[2])} ({why}), {hp} pw {bl.energy}')
+            agent.cast('sleep', (sy, sx))
+            agent.log(f'MINO cast -> {(agent.message or "")[:160]!r}')
+            self._note()
             return
         if kind == 'zapself':
             agent.log(f'MINO zapping {arg.text!r} at ourselves ({why}), {hp}')

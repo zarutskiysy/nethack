@@ -25,7 +25,7 @@ from scipy import ndimage
 
 from . import objects as O
 
-from . import jf_config, jf_log, power, utils, valley, valley_walk
+from . import castle_v2, jf_config, jf_log, power, utils, valley, valley_walk
 from .castle_logic import CastlePassage
 from .character import Character
 from .exceptions import AgentPanic
@@ -722,6 +722,14 @@ CRASH_SEARCH_MAX = 1500
 # below 0. So: ~7 kills at turn 20000, ~3 at 9000, 1 at 3000.
 ALIGN_BUDGET = False
 ALIGN_MARGIN = 5
+# DWARF_ALIGN_HOSTILE (off; research/mon_kit.md): the budget above charges -12 for EVERY dwarf kill, but makemon.c
+# peace_minded never makes a dwarf (lawful, A 4) peaceful to an orc (race_hostile: MH_DWARF in the orc hatemask) or to
+# a neutral / chaotic human or elf (sgn(4) != sgn(alignment)); mon.c set_malign then gives the hostile dwarf
+# malign = abs(4), so its kill RAISES the record. The false debt stopped the tool-less Mines camp's dwarf search
+# (should_search_dwarves -> _may_kill_dwarf: estimate < 18) in 6 of 84 mon-hum-neu dives (au_monhn_; one died
+# tool-less in the Mines) and holds prayers below 0. On: for those heroes a dwarf kill counts as a hostile kill (+2,
+# as the others) and the budget never forbids one.
+DWARF_ALIGN_HOSTILE = False
 # turns prayers wait after each dwarf we kill (assumed Luck -1; the Luck loss doesn't happen, see above)
 KILL_PRAYER_HOLD = 600
 # the Dlvl-1 grind (and the rest of the tour) hunts peaceful dwarves from this XL (0: off) and keeps the tool:
@@ -1001,6 +1009,7 @@ class DiveLogic:
         self._fort_meal = None             # (y, x, monster id): the corpse next to the pile we stepped off to eat
         self._fort_pulled = {}             # monster name -> last turn it pulled the walk back to the pile
         self.castle = CastlePassage(self)  # castle_logic.py (jf_config.CASTLE_PASSAGE)
+        castle_v2.new_game()               # castle_v2: per-game state only (no jf_config change)
         from .castle_front import FrontDoor
         self.front = FrontDoor(self)       # castle_front.py (jf_config.FRONT_DOOR)
         from .castle_tune import PassTune
@@ -1295,6 +1304,9 @@ class DiveLogic:
             agent.log(f'DIVE climbed off a stranded Medusa square {prev[1]}: the > at {pos} stays closed, digging down')
         self._last_pos = (key, pos)
         self.castle.note_level()
+        if jf_config.CASTLE_V2 or jf_config.CASTLE_CENSUS_LOG:
+            # castle_v2: the crusher-route bundle once the castle zone is reached; the arrival census line
+            castle_v2.on_update(self, level, key)
         self._note_digging_tools(key, pos)
         if TOOL_LOG:
             self._log_tool_change(turn)
@@ -1306,6 +1318,8 @@ class DiveLogic:
             self._murder_turn = turn
             agent.prayer_hold_until = max(getattr(agent, 'prayer_hold_until', -1), turn) + 1200
             agent.log('MURDER: Luck -2, prayers held 1200 turns')
+        if jf_config.PET_KILL_PRAYER_HOLD:
+            self._pet_kill_hold(turn)
         if self._hunting and self._DWARF_KILLED.search(agent.message):
             self._hunting = False
             self._dwarves_killed += 1
@@ -1418,6 +1432,27 @@ class DiveLogic:
 
     _DWARF_KILLED = re.compile(r"You kill (the|a|an) (poor )?dwarf( lord| king)?!")
     _TOOL_PICKED_UP = re.compile(r"\b[a-zA-Z] - (an?|\d+) [^.]*(pick-axe|dwarvish mattock)")
+    # mon.c xkilled, a tame victim: 'You hear the rumble of distant thunder...' ('the studio audience applaud!'
+    # while hallucinating); nothing is heard while deaf
+    _PET_KILLED = ('rumble of distant thunder', 'studio audience applaud')
+
+    def _pet_kill_hold(self, turn):
+        """PET_KILL_PRAYER_HOLD (jf_config; DT6A 751f31d): we killed our own pet -- hold every prayer but the
+        certain-death ones for PET_KILL_PRAYER_HOLD_TURNS turns. Reads every message since the last update (the kill
+        may come inside an atomic operation: a thrown stack, an explosion)."""
+        agent = self.agent
+        history = agent._message_history
+        start = getattr(self, '_pet_kill_seen', 0)
+        if start > len(history):   # a fresh agent after a driver restart
+            start = 0
+        self._pet_kill_seen = len(history)
+        text = ' '.join(history[start:] + [agent.message or ''])
+        if not any(m in text for m in self._PET_KILLED):
+            return
+        until = turn + int(jf_config.PET_KILL_PRAYER_HOLD_TURNS)
+        agent.prayer_hold_until = max(getattr(agent, 'prayer_hold_until', -1), until)
+        agent.log(f'PET KILL: our pet killed (alignment -15, -24 for a neutral; Luck -1): prayers held until '
+                  f'{agent.prayer_hold_until}')
 
     def _log_tool_change(self, turn):
         """TOOL_LOG: log when the best digging tool in the pack appears, changes or goes (every TOOL_LOG_EVERY turns).
@@ -1497,7 +1532,7 @@ class DiveLogic:
             gain = loss = 0
             for m in self._KILL.finditer(msg):
                 name = m.group(1)
-                if name in DWARF_NAMES:
+                if name in DWARF_NAMES and not (DWARF_ALIGN_HOSTILE and self._dwarves_always_hostile()):
                     loss += {'dwarf': 12, 'dwarf lord': 15, 'dwarf king': 18}[name]
                 elif name != 'it' and name not in self._PEACEFUL_KIN:
                     # conservative: an always-hostile monster gives max(5, |alignment|), an angered peaceful
@@ -1606,10 +1641,23 @@ class DiveLogic:
             return False
         if not ALIGN_BUDGET:
             return True
+        if DWARF_ALIGN_HOSTILE and self._dwarves_always_hostile():
+            return True   # no dwarf is peaceful to us: each kill raises the record (set_malign: abs(4))
         if self._align_est is None:
             return False
         # this kill (-13) plus every peaceful dwarf in view that turns hostile and has to be killed (-13 each)
         return self._align_est - 13 * (1 + witnesses) >= ALIGN_MARGIN
+
+    def _dwarves_always_hostile(self):
+        """DWARF_ALIGN_HOSTILE: makemon.c peace_minded never makes a dwarf peaceful to us -- an orc (race_hostile), or a
+        neutral or chaotic human or elf (cross-aligned). Dwarves and gnomes are race_peaceful kin; a lawful human is
+        coaligned (peaceful ~5 times in 6); an unknown identity counts as not (the old, cautious budget)."""
+        ch = self.agent.character
+        race = getattr(ch, 'race', None)
+        if race == Character.ORC:
+            return True
+        return race in (Character.HUMAN, Character.ELF) and \
+            getattr(ch, 'alignment', None) in (Character.NEUTRAL, Character.CHAOTIC)
 
     def should_dive(self):
         if self.diving:
@@ -2526,7 +2574,7 @@ class DiveLogic:
             yield False
         if not jf_config.FAINT_SHELTER or bl.hunger_state < Hunger.WEAK or agent.prayer_failed or \
                 agent.current_level().dungeon_number == GEHENNOM or agent.character.prop.blind or \
-                agent.edible_carried_food():
+                (agent.ready_food() if jf_config.TIN_FIX else agent.edible_carried_food()):
             yield False   # (carried food the bot won't eat, e.g. wolfsbane or a sacrifice corpse, doesn't count)
         if bl.hunger_state >= Hunger.FAINTING:
             prayer_due = agent.fainting_prayer_due()
@@ -2585,8 +2633,8 @@ class DiveLogic:
                 bl.hunger_state < Hunger.WEAK or \
                 (agent.prayer_failed and not rescue_guard) or \
                 agent.current_level().dungeon_number == GEHENNOM or agent.character.prop.blind or \
-                agent.edible_carried_food():
-            yield False
+                (agent.ready_food() if jf_config.TIN_FIX else agent.edible_carried_food()):
+            yield False   # TIN_FIX: no tin while Fainting (it never opens); food underfoot is eaten first
         # a vault guard must be answered and followed (see faint_shelter)
         if utils.isin(agent.glyphs, G.GUARD).any():
             yield False
@@ -3648,7 +3696,8 @@ class DiveLogic:
     def starving(self):
         """Weak or worse after a failed prayer (the god stays angry) with nothing edible carried."""
         agent = self.agent
-        return agent.prayer_failed and agent.blstats.hunger_state >= Hunger.WEAK and not agent.edible_carried_food()
+        return agent.prayer_failed and agent.blstats.hunger_state >= Hunger.WEAK and \
+            not (agent.ready_food() if jf_config.TIN_FIX else agent.edible_carried_food())
 
     # ------------------------------------------------------------- PREP track (prep lane)
 
@@ -3764,6 +3813,41 @@ class DiveLogic:
             cls._DART_GLYPHS = frozenset(gl)
         return cls._DART_GLYPHS
 
+    _ARROW_NAMES = ('arrow', 'elven arrow', 'orcish arrow', 'silver arrow', 'ya')
+    _AMMO_GLYPHS = {}
+
+    @classmethod
+    def _ammo_glyphs(cls, crossbow):
+        """RAN_AMMO_VIEW: the object glyphs of what a bow (arrows, ya) or a crossbow (bolts) fires
+        (item.is_fired_projectile)."""
+        if crossbow not in cls._AMMO_GLYPHS:
+            names = ('crossbow bolt',) if crossbow else cls._ARROW_NAMES
+            gl = set()
+            for g in G.NORMAL_OBJECTS:
+                try:
+                    if nh.objdescr.from_idx(nh.glyph_to_obj(g)).oc_name in names:
+                        gl.add(g)
+                except Exception:
+                    continue
+            cls._AMMO_GLYPHS[crossbow] = frozenset(gl)
+        return cls._AMMO_GLYPHS[crossbow]
+
+    def _ranger_ammo_glyphs(self):
+        """RAN_AMMO_VIEW: the glyphs of the missiles the launchers we carry fire (bow family: arrows and ya; crossbow:
+        bolts). A launcher with no missiles left counts too: that is when the arrows on the floor matter most
+        (get_best_ranged_set then has no launcher set at all)."""
+        try:
+            kinds = set()
+            for item in flatten_items(self.agent.inventory.items):
+                if item.is_launcher() and item.status != Item.CURSED and item.object.name != 'sling':
+                    kinds.add(item.object.name == 'crossbow')
+            out = frozenset()
+            for crossbow in sorted(kinds):
+                out = out | self._ammo_glyphs(crossbow)
+            return out
+        except Exception:
+            return frozenset()
+
     def note_missile(self, dy, dx):
         """fight2 threw a missile from where we stand along (dy, dx): its line is where our missiles lie."""
         try:
@@ -3807,6 +3891,10 @@ class DiveLogic:
         mask = utils.isin(agent.glyphs, self._dagger_glyphs())
         if (jf_config.TOU_VOLLEY or jf_config.TOU_DART_SAVE) and agent.character.role == agent.character.TOURIST:
             mask |= utils.isin(agent.glyphs, self._dart_glyphs())   # a Tourist's darts in view too
+        if jf_config.RAN_AMMO_VIEW and agent.character.role == agent.character.RANGER:
+            ammo_glyphs = self._ranger_ammo_glyphs()
+            if ammo_glyphs:
+                mask |= utils.isin(agent.glyphs, ammo_glyphs)   # a Ranger's arrows / bolts in view too
         for (y, x), t in done.items():
             if now - t < jf_config.MISSILE_RECOVER_TURNS:
                 mask[y, x] = False
@@ -4195,14 +4283,16 @@ class DiveLogic:
     def is_digging_tool(item, shield_stuck):
         """A pick-axe, or a dwarvish mattock (both hands: the shield comes off first, so not with a
         cursed shield). A third of the dwarves' digging tools are mattocks."""
-        if not item.is_unambiguous():
+        objs = item.objs   # (PERF: is_unambiguous() / .object inlined -- len(objs) == 1, objs[0])
+        if len(objs) != 1:
             return False
+        obj = objs[0]
         if item.status == Item.CURSED and not (CURSED_PICK_OK and (item.equipped or
-                                                                   item.object == O.from_name('pick-axe'))):
+                                                                   obj == O.from_name('pick-axe'))):
             return False
-        if item.object == O.from_name('pick-axe'):
+        if obj == O.from_name('pick-axe'):
             return True
-        return item.object == O.from_name('dwarvish mattock') and not shield_stuck
+        return obj == O.from_name('dwarvish mattock') and not shield_stuck
 
     def _shield_stuck(self):
         shield = self.agent.inventory.items.off_hand
@@ -4335,6 +4425,9 @@ class DiveLogic:
             return
         if what == 'reroll':
             self._medusa_reroll(arg)
+            return
+        if what == 'isle_hop':
+            self._isle_hop(arg)   # MEDUSA_ISLE_HOP (only ever planned with the flag on)
             return
         if what == 'cycle_up':
             self._medusa_cycle_climb(arg)
@@ -4559,6 +4652,10 @@ class DiveLogic:
             if holding:
                 self._at_count(level.key())   # (once per turn: this also runs as other strategies' condition)
                 return act   # a zap down, or None: fight2 fights the @ on level ground and try_dig_down waits
+        if jf_config.MEDUSA_ISLE_HOP:
+            hop = self._isle_hop_action()
+            if hop is not None:
+                return hop   # MEDUSA_ISLE_HOP: no land next to us -- a flood here drowns us; to land first
         pit_ok = not self._in_own_pit() or (WAND_RESERVE and self._reserve_emergency())
         if WAND_FIRST and wand is not None and pit_ok and not self._wand_waits() and not self._wand_reserved():
             # with hostiles in view the wand's instant hole beats the pick's ~8 turns under attack (and a pit
@@ -5496,6 +5593,105 @@ class DiveLogic:
         with agent.atom_operation():
             agent.direction(agent.calc_direction(y0, x0, y, x))
         agent.log(f'DIVE MEDUSA_HOP: now at {(agent.blstats.y, agent.blstats.x)} ({agent.message[-100:]!r})')
+
+    def _isle_terrain(self):
+        """MEDUSA_ISLE_HOP: (land, water) bool arrays of this level -- _medusa_terrain() once the variant's fixed map is
+        known, else what the bot has seen (land: known walkable squares that are no water, tree or door)."""
+        agent = self.agent
+        if self._medusa_variant_name() is not None:
+            return self._medusa_terrain()
+        level = agent.current_level()
+        water = utils.isin(level.objects, WET) | utils.isin(agent.glyphs, WET)
+        land = level.walkable & (level.objects != -1) & ~water & (level.objects != SS.S_tree) & \
+            ~utils.isin(level.objects, G.DOORS)
+        land[agent.blstats.y, agent.blstats.x] = True
+        water[agent.blstats.y, agent.blstats.x] = False
+        return land, water
+
+    def _isle_hop_action(self):
+        """MEDUSA_ISLE_HOP (jf_config): ('isle_hop', (y, x)), the moat square next to us to step into, when no land square
+        is next to us (a flood of a hole dug here drowns us: trap.c drown finds no crawl destination) and that water
+        borders land with room to dig; else None. The crawl out of it picks a random free land square next to the water
+        (hack.c crawl_destination), the square we stand on among them: the water with the best share of squares on
+        land of 2+ squares wins (ties: bigger land, orthogonal, then the map order)."""
+        agent = self.agent
+        if not (jf_config.MEDUSA_ISLE_HOP and self.diving and self.on_medusa_level()) or self.levitating():
+            return None
+        if self._in_own_pit():
+            return None   # (never planned onto such a square with the flag on; climbing out is not a hop)
+        bl = agent.blstats
+        if getattr(bl, 'carrying_capacity', 0) > 1:
+            return None   # Stressed or worse: drown -> emergency_disrobe sheds gear, or fails ('But in vain.')
+        level = agent.current_level()
+        key = level.key()
+        if self.__dict__.get('_isle_hops', {}).get(key, 0) >= jf_config.MEDUSA_ISLE_HOP_MAX:
+            return None
+        y0, x0 = int(bl.y), int(bl.x)
+        if self._crawl_exits(y0, x0, count_monsters=False) > 0:
+            return None   # land next to us: a flood crawls us out (DROWN_GUARD's business if monsters stand there)
+        if self.digging_tool() is None and self.digging_wand() is None:
+            return None   # nothing to dig with: no flood to fear here
+        if self._freeze_action() is not None:
+            return None   # MEDUSA_FREEZE: ice on the moat around us first (no wet flood roll, and ice to crawl to)
+        land, water = self._isle_terrain()
+        h, w = land.shape
+        if any(land[y0 + dy, x0 + dx] for dy in (-1, 0, 1) for dx in (-1, 0, 1)
+               if (dy or dx) and 0 <= y0 + dy < h and 0 <= x0 + dx < w):
+            return None   # the fixed map knows land next to us that the screen hides (a monster on it, never seen)
+        others = land.copy()
+        others[y0, x0] = False
+        labels, _ = ndimage.label(others, structure=np.ones((3, 3), dtype=bool))
+        sizes = np.bincount(labels.ravel())
+        mons = agent.monster_tracker.monster_mask
+
+        def rock(yy, xx):
+            return not (0 <= yy < h and 0 <= xx < w) or not (land[yy, xx] or water[yy, xx])
+
+        best = None
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                wy, wx = y0 + dy, x0 + dx
+                if (dy, dx) == (0, 0) or not (0 <= wy < h and 0 <= wx < w) or not water[wy, wx] or mons[wy, wx]:
+                    continue
+                if dy and dx and rock(y0 + dy, x0) and rock(y0, x0 + dx):
+                    continue   # (hack.c test_move: no diagonal squeeze between two rock/tree squares with a load)
+                good = other = 0
+                room = 0
+                for ey in (-1, 0, 1):
+                    for ex in (-1, 0, 1):
+                        ly, lx = wy + ey, wx + ex
+                        if (ey, ex) == (0, 0) or not (0 <= ly < h and 0 <= lx < w) or (ly, lx) == (y0, x0) or \
+                                not land[ly, lx] or mons[ly, lx]:
+                            continue   # (crawl_destination: goodpos -- land, no monster; our square counted below)
+                        if ey and ex and rock(wy + ey, wx) and rock(wy, wx + ex):
+                            continue   # (crawl_destination: no diagonal squeeze either)
+                        size = int(sizes[labels[ly, lx]])
+                        if size >= 2:
+                            good += 1
+                            room = max(room, size)
+                        else:
+                            other += 1
+                if not good:
+                    continue
+                share = good / (good + other + 1)   # +1: the square we leave is free to crawl back to
+                k = (-share, -room, abs(dy) + abs(dx), wy, wx)
+                if best is None or k < best[0]:
+                    best = (k, (wy, wx))
+        return None if best is None else ('isle_hop', best[1])
+
+    def _isle_hop(self, target):
+        """MEDUSA_ISLE_HOP: step into the moat square `target`; drown() crawls us out at once (see _isle_hop_action)."""
+        agent = self.agent
+        key = agent.current_level().key()
+        hops = self.__dict__.setdefault('_isle_hops', {})
+        hops[key] = hops.get(key, 0) + 1
+        y0, x0 = int(agent.blstats.y), int(agent.blstats.x)
+        self._task('medusa isle hop')
+        agent.log(f'DIVE MEDUSA_ISLE_HOP {hops[key]}: no land next to {(y0, x0)}, stepping into the moat at {target}')
+        with agent.atom_operation():
+            agent.direction(agent.calc_direction(y0, x0, *target))
+        agent.log(f'DIVE MEDUSA_ISLE_HOP: now at {(int(agent.blstats.y), int(agent.blstats.x))} '
+                  f'({(agent.message or "")[-100:]!r})')
 
     def _above_medusa(self):
         """This is the level right above Medusa's."""
@@ -7571,6 +7767,11 @@ class DiveLogic:
                 else:
                     self._task('AT_THREAT hold')
                     agent.search(1)
+                return True
+        if jf_config.MEDUSA_ISLE_HOP:
+            hop = self._isle_hop_action()
+            if hop is not None:
+                self._escape_act(hop)   # MEDUSA_ISLE_HOP: no land next to us -- a flood here drowns us
                 return True
         y, x = agent.blstats.y, agent.blstats.x
         candidates = utils.isin(level.objects, PLAIN_FLOOR) | ((level.objects == -1) & level.walkable)

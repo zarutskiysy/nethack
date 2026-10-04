@@ -1,4 +1,20 @@
-from functools import wraps
+from functools import update_wrapper, wraps
+from types import FunctionType
+
+
+def _named_like(wrapper, wrapped):
+    """functools.update_wrapper(wrapper, wrapped) with the attribute loop unrolled for plain functions (PERF: run for
+    every strategy object built, ~7 per step). Same attributes, same order, same result."""
+    if type(wrapped) is not FunctionType:
+        return update_wrapper(wrapper, wrapped)
+    wrapper.__module__ = wrapped.__module__
+    wrapper.__name__ = wrapped.__name__
+    wrapper.__qualname__ = wrapped.__qualname__
+    wrapper.__doc__ = wrapped.__doc__
+    wrapper.__annotations__ = wrapped.__annotations__
+    wrapper.__dict__.update(wrapped.__dict__)
+    wrapper.__wrapped__ = wrapped
+    return wrapper
 
 
 class Strategy:
@@ -29,7 +45,7 @@ class Strategy:
 
     @classmethod
     def wrap(cls, func):
-        return lambda *a, **k: Strategy(wraps(func)(lambda: func(*a, **k)))
+        return lambda *a, **k: Strategy(_named_like(lambda: func(*a, **k), func))
 
     def __init__(self, strategy, config=None):
         self.strategy = strategy

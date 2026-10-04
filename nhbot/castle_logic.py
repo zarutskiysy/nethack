@@ -643,6 +643,16 @@ class CastlePassage:
         return nh.glyph_is_monster(glyph) or glyph == nh.GLYPH_INVISIBLE or \
             bool(self.agent.monster_tracker.monster_mask[y, x])
 
+    def _v2_peaceful_at(self, y, x):
+        """castle_v2: the monster on bot square (y, x) is peaceful (monster_tracker) or a pet (glyph)."""
+        agent = self.agent
+        try:
+            if bool(agent.monster_tracker.peaceful_monster_mask[y, x]):
+                return True
+        except Exception:
+            pass
+        return bool(nh.glyph_is_pet(int(agent.glyphs[y, x])))
+
     def _dry(self, mx, my):
         if map_char(mx, my) == '.':
             return True
@@ -675,6 +685,17 @@ class CastlePassage:
         y, x = to_bot(mx, my)
         d = agent.calc_direction(agent.blstats.y, agent.blstats.x, y, x)
         if self._monster_at(mx, my):
+            if jf_config.CASTLE_V2 and jf_config.CASTLE_V2_PEACEFUL and self._v2_peaceful_at(y, x):
+                # castle_v2 (CASTLE_V2_PEACEFUL): a peaceful or tame blocker is waited out, never fought (F on a
+                # peaceful angers it: vkc1 wiz-elf-cha-fem 61, a Grey-elf); after CASTLE_V2_PEACEFUL_WAITS waits on
+                # one square LANDING_ROUTE plans round it
+                k = ('v2_peaceful', (mx, my))
+                self._tries[k] = self._tries.get(k, 0) + 1
+                if self._tries[k] > jf_config.CASTLE_V2_PEACEFUL_WAITS:
+                    self._route_blocked.add((y, x))
+                self._set_state(f'v2: waiting for the peaceful at {(mx, my)}')
+                agent.search()
+                return
             if jf_config.CFP_ZAP and self._floating():
                 # castle-first-pass: teleportation/striking beams (or a ray along a long straight stretch) first
                 from . import castle_cross

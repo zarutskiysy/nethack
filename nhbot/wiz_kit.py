@@ -140,6 +140,17 @@ class WizKitGuard(hea_kit.HeaKitGuard):
         except Exception:  # noqa: BLE001
             return False
 
+    def _is_monk(self):
+        from .character import Character
+        return getattr(self.agent.character, 'role', None) == Character.MONK
+
+    def _fight_lane(self):
+        """The fight lane (fight_plan) acts for us: WIZ_WAND_FIGHT for the WIZ_KIT_ROLES, or MON_SLEEP_FIGHT for a Monk
+        (its starting sleep spell, a third of Monks, and the attack wands it finds)."""
+        if jf_config.WIZ_WAND_FIGHT and self._role_ok():
+            return True
+        return bool(jf_config.MON_SLEEP_FIGHT) and self._is_monk()
+
     def _calm(self, radius=6):
         """No hostile within `radius` (Chebyshev) and nothing hurt us this turn."""
         agent = self.agent
@@ -186,6 +197,8 @@ class WizKitGuard(hea_kit.HeaKitGuard):
         ch = self.agent.character
         if getattr(ch, 'race', None) == Character.ELF and self.agent.blstats.experience_level >= 4:
             return True   # attrib.c elf_abil: sleep resistance at XL 4
+        if jf_config.MON_SLEEP_FIGHT and getattr(ch, 'role', None) == Character.MONK:
+            return True   # attrib.c mon_abil: sleep resistance at XL 1
         return False
 
     def _self_harmless(self, name):
@@ -226,7 +239,7 @@ class WizKitGuard(hea_kit.HeaKitGuard):
     def fight_plan(self):
         """('zap' | 'cast', item or None, name, (dy, dx), why, hits) or None. Side-effect free apart from forgetting
         stale sleepers."""
-        if not jf_config.WIZ_WAND_FIGHT or not self._role_ok() or not self._usable():
+        if not self._fight_lane() or not self._usable():
             return None
         agent = self.agent
         from .combat import fight_heur
@@ -293,7 +306,7 @@ class WizKitGuard(hea_kit.HeaKitGuard):
 
     def kill_plan(self):
         """('melee', (y, x), name) at a sleeper next to us when nothing awake threatens us, else None."""
-        if not jf_config.WIZ_WAND_FIGHT or not self.slept or not self._usable():
+        if not (jf_config.WIZ_WAND_FIGHT or jf_config.MON_SLEEP_FIGHT) or not self.slept or not self._usable():
             return None
         agent = self.agent
         self._refresh_slept()
@@ -451,7 +464,7 @@ class WizKitGuard(hea_kit.HeaKitGuard):
 
         def f():
             if not (jf_config.WIZ_WAND_FIGHT or jf_config.WIZ_SPEED_SELF or jf_config.WIZ_KIT_BOOST or
-                    jf_config.WIZ_RING_SAFE):
+                    jf_config.WIZ_RING_SAFE or jf_config.MON_SLEEP_FIGHT):
                 yield False
                 return
             agent = self.agent

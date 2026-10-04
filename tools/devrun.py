@@ -20,6 +20,32 @@ from pathlib import Path
 ROOT = Path(os.environ.get("NH_WORK") or Path(__file__).resolve().parents[2])
 
 
+def pin_birthday(env, spec):
+    """Make a dev game a pure function of its seed: overwrite NetHack's `ubirthday` right after reset.
+
+    NLE 1.3 seeds every RNG from the spec, but u_init.c still sets `ubirthday = time()` (wall clock, 1 s), and
+    the game reads it: the anthole's ant species (mkroom.c antholemon: ubirthday % 3), shopkeeper names and
+    sex (shknam.c: ubirthday / 257; deep levels then call rn2 -> the whole level-gen stream shifts), glass gem
+    prices (shk.c) and eroded scroll texts (read.c). Two runs of one game therefore differ whenever they
+    start in a different second (anthole) or 257-s bucket (shops) -- research/nondet.md. Dlvl 1 (generated
+    during reset) uses none of these (no shops or antholes there; bones are off), so pinning after reset makes
+    the whole game deterministic. The value is a hash of the seed spread over ~3 years: %3 and /257 stay
+    uniform, so in expectation the games are the arena's (which runs on its real clock).
+    NH_REAL_BIRTHDAY=1 keeps the wall clock. Returns the value written (None if not pinned)."""
+    if os.environ.get("NH_REAL_BIRTHDAY"):
+        return None
+    import ctypes
+    import _ctypes
+    value = 1_700_000_000 + int(spec.core_seed) % 100_000_000
+    nethack = env._env.nethack     # nle.nethack.Nethack: its private copy of libnethack, loaded at dlpath
+    lib = ctypes.CDLL(nethack.dlpath, mode=os.RTLD_NOLOAD | os.RTLD_LAZY)
+    try:
+        ctypes.c_int64.in_dll(lib, "ubirthday").value = value
+    finally:
+        _ctypes.dlclose(lib._handle)   # drop our reference: NLE dlcloses/reopens the library on reset
+    return value
+
+
 def play(args):
     bot_dir, ident, seed, eval_id, out_path, max_steps, secret = args
     os.environ["JF_LOG_DIR"] = str(Path(out_path).parent / "logs")
@@ -40,6 +66,7 @@ def play(args):
     agent = bot.make_agent()
     t0 = time.time()
     obs = env.reset(spec)
+    birthday = pin_birthday(env, spec)
     agent.reset(obs)
     msgs, steps, error, last = [], 0, None, obs
     live_bl, live_screen = None, None   # the last observation before the end screens (blstats zeroed there)
@@ -65,7 +92,7 @@ def play(args):
     screen = bytes(last["tty_chars"]).decode("latin-1")
     screen = "\n".join(screen[i:i + 80].rstrip() for i in range(0, len(screen), 80))
     rec = dict(ident=ident, seed=seed, progress=m.progress, milestone=m.milestone, depth=m.max_depth,
-               turns=m.turns, steps=steps, cause=m.cause_of_death, end_status=m.end_status,
+               turns=m.turns, steps=steps, birthday=birthday, cause=m.cause_of_death, end_status=m.end_status,
                wall=time.time() - t0, error=error, messages=msgs, screen=screen,
                blstats=[int(x) for x in last["blstats"]],
                live_bl=[int(x) for x in live_bl] if live_bl is not None else None,
