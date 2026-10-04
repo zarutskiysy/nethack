@@ -132,3 +132,17 @@ OVERRIDES["wiz-gno"] = {"jf_config.FB_RESERVE": 15}
 OVERRIDES["wiz-orc"] = {"jf_config.FB_RESERVE": 15}
 # FB_RESERVE 15 (same evidence as wiz-elf; wiz-hum-neu plays pf_s25p8, unaffected)
 OVERRIDES["wiz-hum"] = {"jf_config.FB_RESERVE": 15}
+
+# v10g: v10g: dev-confirmed config (A/B on integ5, pooled over the Mac (arm64) and the x86 VM)
+# WIZ_WAND_FIGHT +0.016 (z 3.4, 1064 clusters, both platforms); SHOP_MASK_FIX +0.013 (z 2.6, 920); FB_RESERVE kept
+# from v10f
+OVERRIDES["wiz-elf"] = {"jf_config.FB_RESERVE": 15, "jf_config.WIZ_WAND_FIGHT": True, "jf_config.SHOP_MASK_FIX": True}
+# same evidence as wiz-elf
+OVERRIDES["wiz-gno"] = {"jf_config.FB_RESERVE": 15, "jf_config.WIZ_WAND_FIGHT": True, "jf_config.SHOP_MASK_FIX": True}
+# same evidence as wiz-elf (wiz-hum-neu plays pf_s25p8, unaffected)
+OVERRIDES["wiz-hum"] = {"jf_config.FB_RESERVE": 15, "jf_config.WIZ_WAND_FIGHT": True, "jf_config.SHOP_MASK_FIX": True}
+# WIZ_WAND_FIGHT + SHOP_MASK_FIX; FB_RESERVE dropped for orcs (dev pooled -0.013, verified -0.14)
+OVERRIDES["wiz-orc"] = {"jf_config.WIZ_WAND_FIGHT": True, "jf_config.SHOP_MASK_FIX": True}
+# RAN_ARCHERY + RAN_ENHANCE_LAUNCHER +0.020 (z 3.3: 1272 clusters on both platforms + a fresh-seed re-run +0.040, z
+# 2.6); UNSEEN_PET_GUARD off kept from v10b
+OVERRIDES["ran"] = {"jf_config.UNSEEN_PET_GUARD": False, "jf_config.RAN_ARCHERY": True, "jf_config.RAN_ENHANCE_LAUNCHER": True}

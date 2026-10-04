@@ -91,6 +91,10 @@
   (`roles.attributes_identity`, so the per-role config applies even when the welcome line is missed), and the Tourist
   engine `pf_dtad7a` (DT6A/nethacker@ad7a864) routed for `tou`. The `RING_MODULE`/`MEDUSA_HOP` module code is
   byte-identical to daglar's, so this reproduces the leader's behaviour exactly, with v4's extra fixes on top.
+- **v10g**: Wizards fight with their starting wand (WIZ_WAND_FIGHT) and get the shop mask fix (SHOP_MASK_FIX); orcish
+  Wizards drop the force-bolt reserve; Rangers on nhbot wield their bow and fire arrows (RAN_ARCHERY,
+  RAN_ENHANCE_LAUNCHER). Dev A/B on held-out seeds, pooled over arm64 and x86: Wizards +0.016 (z 3.4) and +0.013 (z
+  2.6), Rangers +0.020 (z 3.3).
 - **castle-wish (CASTLE_WISH_FIRST, off; `nhbot/castle_treasury.py`, workspace `research/castle_wish.md`):** the
   castle's wand of wishing before the trap door for every bot inside the walls -- all four towers (nearest first; a
   tower whose chest square was seen bare or with a soldier on it is ruled out; one showing an object goes first), a
